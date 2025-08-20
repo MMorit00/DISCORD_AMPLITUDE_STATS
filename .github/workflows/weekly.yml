@@ -1,0 +1,29 @@
+name: amplitude-weekly
+on:
+  schedule:
+    - cron: "0 1 * * 1"  # 每周一 01:00 UTC（等于北京 09:00）
+  workflow_dispatch: {}   # 允许手动触发
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weekly report
+        env:
+          AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
+          AMPLITUDE_SECRET_KEY: ${{ secrets.AMPLITUDE_SECRET_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          AMPLITUDE_TIMEZONE: Asia/Shanghai   # 如需其它时区可改
+        run: python main.py
