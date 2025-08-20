@@ -22,6 +22,8 @@ AMPLITUDE_API_KEY = os.getenv("AMPLITUDE_API_KEY")
 AMPLITUDE_SECRET_KEY = os.getenv("AMPLITUDE_SECRET_KEY")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 TIMEZONE = os.getenv("AMPLITUDE_TIMEZONE", "UTC")
+# 触发模式：SCHEDULED（定时触发，查上周数据）或 MANUAL（手动触发，查今日数据）
+TRIGGER_MODE = os.getenv("TRIGGER_MODE", "MANUAL").upper()
 # 区域（可选）：US 或 EU。若设置了 AMPLITUDE_BASE_URL，则忽略本项
 AMPLITUDE_REGION = os.getenv("AMPLITUDE_REGION", "").strip().upper()
 # 固定使用 https://analytics.amplitude.com
@@ -52,17 +54,27 @@ if not (AMPLITUDE_API_KEY and AMPLITUDE_SECRET_KEY and DISCORD_WEBHOOK_URL):
     logging.error("缺少必要环境变量：AMPLITUDE_API_KEY / AMPLITUDE_SECRET_KEY / DISCORD_WEBHOOK_URL")
     sys.exit(1)
 
-def week_range(tz_name: str = "UTC") -> Tuple[dt.datetime, dt.datetime, dt.datetime, dt.datetime]:
+def get_time_range(tz_name: str = "UTC", mode: str = "MANUAL") -> Tuple[dt.datetime, dt.datetime, str]:
     """
-    返回两个完整周的起止时间（上一周、上上周），均为周一 00:00 到下周一 00:00（半开区间）
+    根据触发模式返回时间范围
+    SCHEDULED: 返回上周数据（上周一00:00到上周日23:59）
+    MANUAL: 返回今日数据（今日00:00到现在）
     """
     tzinfo = tz.gettz(tz_name)
     now = dt.datetime.now(tzinfo)
-    weekday = now.weekday()  # Monday=0
-    this_monday = (now - dt.timedelta(days=weekday)).replace(hour=0, minute=0, second=0, microsecond=0)
-    last_monday = this_monday - dt.timedelta(days=7)
-    prev_monday = this_monday - dt.timedelta(days=14)
-    return prev_monday, last_monday, last_monday, this_monday
+    
+    if mode == "SCHEDULED":
+        # 定时触发：查上周数据（上周一到上周日）
+        weekday = now.weekday()  # Monday=0
+        this_monday = (now - dt.timedelta(days=weekday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        last_monday = this_monday - dt.timedelta(days=7)
+        last_sunday = this_monday - dt.timedelta(seconds=1)
+        
+        return last_monday, last_sunday, "上周"
+    else:
+        # 手动触发：查今日数据
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return today_start, now, "今日"
 
 def amplitude_export(start: dt.datetime, end: dt.datetime) -> bytes:
     """
@@ -184,7 +196,7 @@ def build_message(prev_week_label: str, prev_stats: Dict[str, int],
                   last_week_label: str, last_stats: Dict[str, int],
                   growth: Dict[str, Optional[float]]) -> str:
     lines = []
-    lines.append("Amplitude 周统计数据")
+    lines.append("Amplitude 日统计数据")
     lines.append("")
     lines.append(f"{prev_week_label}：")
     lines.append(f"- 活跃用户：{prev_stats['活跃用户']}")
@@ -194,7 +206,7 @@ def build_message(prev_week_label: str, prev_stats: Dict[str, int],
     lines.append(f"- 活跃用户：{last_stats['活跃用户']}")
     lines.append(f"- 事件数：{last_stats['事件数']}")
     lines.append("")
-    lines.append("周环比：")
+    lines.append("日环比：")
     lines.append(f"- 活跃用户：{fmt_pct(growth['活跃用户增长率'])}")
     lines.append(f"- 事件数：{fmt_pct(growth['事件数增长率'])}")
     return "\n".join(lines)
@@ -210,27 +222,36 @@ def post_to_discord(webhook_url: str, content: str):
 
 def main():
     tzinfo = tz.gettz(TIMEZONE)
-    prev_start, prev_end, last_start, last_end = week_range(tz_name=TIMEZONE)
+    
+    # 根据触发模式获取时间范围
+    start_time, end_time, period_label = get_time_range(tz_name=TIMEZONE, mode=TRIGGER_MODE)
 
-    def label(s: dt.datetime, e: dt.datetime):
-        # 展示为业务时区的周一到周日
+    def format_time_range(s: dt.datetime, e: dt.datetime):
         s_local = s.astimezone(tzinfo)
-        e_local = (e - dt.timedelta(seconds=1)).astimezone(tzinfo)
-        return f"{s_local.strftime('%Y-%m-%d')} ~ {e_local.strftime('%Y-%m-%d')}"
+        e_local = e.astimezone(tzinfo)
+        if s_local.date() == e_local.date():
+            return f"{s_local.strftime('%Y-%m-%d')} ({s_local.strftime('%H:%M')} - {e_local.strftime('%H:%M')})"
+        return f"{s_local.strftime('%Y-%m-%d %H:%M')} ~ {e_local.strftime('%Y-%m-%d %H:%M')}"
 
-    prev_label = label(prev_start, prev_end)
-    last_label = label(last_start, last_end)
+    time_range_str = format_time_range(start_time, end_time)
+    
+    logging.info(f"触发模式：{TRIGGER_MODE}")
+    logging.info(f"下载{period_label}数据：{time_range_str}")
+    
+    data_zip = amplitude_export(start_time, end_time)
+    stats = aggregate_week(parse_events_from_zip(data_zip))
 
-    logging.info(f"下载上上周数据：{prev_label}")
-    prev_zip = amplitude_export(prev_start, prev_end)
-    prev_stats = aggregate_week(parse_events_from_zip(prev_zip))
-
-    logging.info(f"下载上周数据：{last_label}")
-    last_zip = amplitude_export(last_start, last_end)
-    last_stats = aggregate_week(parse_events_from_zip(last_zip))
-
-    growth = calculate_growth(last_stats, prev_stats)
-    message = build_message(prev_label, prev_stats, last_label, last_stats, growth)
+    # 构建报告消息
+    lines = []
+    if TRIGGER_MODE == "SCHEDULED":
+        lines.append("Amplitude 上周统计数据")
+    else:
+        lines.append("Amplitude 今日统计数据")
+    lines.append("")
+    lines.append(f"{period_label} ({time_range_str})：")
+    lines.append(f"- 活跃用户：{stats['活跃用户']}")
+    lines.append(f"- 事件数：{stats['事件数']}")
+    message = "\n".join(lines)
 
     logging.info("发送文本到 Discord")
     post_to_discord(DISCORD_WEBHOOK_URL, message)

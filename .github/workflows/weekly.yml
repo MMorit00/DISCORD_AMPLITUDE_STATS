@@ -23,12 +23,24 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run weekly report
+      - name: Run weekly report (Scheduled)
+        if: github.event_name == 'schedule'
         env:
           AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
           AMPLITUDE_SECRET_KEY: ${{ secrets.AMPLITUDE_SECRET_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           AMPLITUDE_TIMEZONE: Asia/Shanghai
-          # 若你的 Amplitude 项目在 EU 数据中心，请在仓库 Secrets 中新增 AMPLITUDE_BASE_URL=https://analytics.eu.amplitude.com
           AMPLITUDE_BASE_URL: ${{ secrets.AMPLITUDE_BASE_URL }}
+          TRIGGER_MODE: SCHEDULED
+        run: python main.py
+
+      - name: Run daily report (Manual)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
+          AMPLITUDE_SECRET_KEY: ${{ secrets.AMPLITUDE_SECRET_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          AMPLITUDE_TIMEZONE: Asia/Shanghai
+          AMPLITUDE_BASE_URL: ${{ secrets.AMPLITUDE_BASE_URL }}
+          TRIGGER_MODE: MANUAL
         run: python main.py
