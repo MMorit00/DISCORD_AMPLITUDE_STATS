@@ -26,6 +26,18 @@ TIMEZONE = os.getenv("AMPLITUDE_TIMEZONE", "UTC")
 # 如果你的项目在 EU 数据中心，请在 Secrets 里设置 AMPLITUDE_BASE_URL=https://analytics.eu.amplitude.com
 AMPLITUDE_BASE_URL = os.getenv("AMPLITUDE_BASE_URL", "https://amplitude.com")
 
+def _normalize_base_url(u: str) -> str:
+    if not u:
+        return "https://amplitude.com"
+    u = u.strip()
+    if u.endswith("/"):
+        u = u[:-1]
+    if not (u.startswith("http://") or u.startswith("https://")):
+        u = "https://" + u
+    return u
+
+AMPLITUDE_BASE_URL = _normalize_base_url(AMPLITUDE_BASE_URL)
+
 if not (AMPLITUDE_API_KEY and AMPLITUDE_SECRET_KEY and DISCORD_WEBHOOK_URL):
     logging.error("缺少必要环境变量：AMPLITUDE_API_KEY / AMPLITUDE_SECRET_KEY / DISCORD_WEBHOOK_URL")
     sys.exit(1)
