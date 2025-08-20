@@ -11,16 +11,20 @@ from typing import Dict, Tuple, Set, Optional
 import requests
 from dateutil import tz
 
-# 配置日志
+# 日志
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
+# 环境变量
 AMPLITUDE_API_KEY = os.getenv("AMPLITUDE_API_KEY")
 AMPLITUDE_SECRET_KEY = os.getenv("AMPLITUDE_SECRET_KEY")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 TIMEZONE = os.getenv("AMPLITUDE_TIMEZONE", "UTC")
+# US 默认为 https://amplitude.com
+# 如果你的项目在 EU 数据中心，请在 Secrets 里设置 AMPLITUDE_BASE_URL=https://analytics.eu.amplitude.com
+AMPLITUDE_BASE_URL = os.getenv("AMPLITUDE_BASE_URL", "https://amplitude.com")
 
 if not (AMPLITUDE_API_KEY and AMPLITUDE_SECRET_KEY and DISCORD_WEBHOOK_URL):
     logging.error("缺少必要环境变量：AMPLITUDE_API_KEY / AMPLITUDE_SECRET_KEY / DISCORD_WEBHOOK_URL")
@@ -28,7 +32,7 @@ if not (AMPLITUDE_API_KEY and AMPLITUDE_SECRET_KEY and DISCORD_WEBHOOK_URL):
 
 def week_range(tz_name: str = "UTC") -> Tuple[dt.datetime, dt.datetime, dt.datetime, dt.datetime]:
     """
-    返回两个完整周的起止时间（上一周、上上周），均为周一 00:00 到下周一 00:00 的半开区间
+    返回两个完整周的起止时间（上一周、上上周），均为周一 00:00 到下周一 00:00（半开区间）
     """
     tzinfo = tz.gettz(tz_name)
     now = dt.datetime.now(tzinfo)
@@ -41,19 +45,48 @@ def week_range(tz_name: str = "UTC") -> Tuple[dt.datetime, dt.datetime, dt.datet
 def amplitude_export(start: dt.datetime, end: dt.datetime) -> bytes:
     """
     调用 Amplitude Export API，返回 zip 二进制数据
-    文档：/api/2/export?start=YYYYMMDDT00&end=YYYYMMDDT00 （UTC 小时粒度）
+    文档：{BASE}/api/2/export?start=YYYYMMDDTHH&end=YYYYMMDDTHH（UTC 小时粒度，end 为开区间）
+    - 某些租户/时间段可能返回 404，表示无可导出归档；此时按“天”拆分重试并合并。
     """
     start_utc = start.astimezone(tz.UTC)
     end_utc = end.astimezone(tz.UTC)
     fmt = "%Y%m%dT%H"
-    url = "https://amplitude.com/api/2/export"
+
+    url = f"{AMPLITUDE_BASE_URL}/api/2/export"
     auth = (AMPLITUDE_API_KEY, AMPLITUDE_SECRET_KEY)
     params = {"start": start_utc.strftime(fmt), "end": end_utc.strftime(fmt)}
 
-    logging.info(f"请求 Amplitude Export: {params}")
-    with requests.get(url, params=params, auth=auth, stream=True, timeout=600) as r:
-        r.raise_for_status()
-        return r.content  # zip 内容
+    logging.info(f"请求 Amplitude Export: {url} params={params}")
+    r = requests.get(url, params=params, auth=auth, stream=True, timeout=600)
+    if r.status_code == 404:
+        # 分天重试并合并 zip 内容
+        logging.warning("Export 返回 404，尝试按天分段重试")
+        buf = io.BytesIO()
+        wrote_any = False
+        with zipfile.ZipFile(buf, "w") as combined_zip:
+            cur = start_utc
+            while cur < end_utc:
+                day_start = cur
+                day_end = min(cur + dt.timedelta(days=1), end_utc)
+                day_params = {"start": day_start.strftime(fmt), "end": day_end.strftime(fmt)}
+                logging.info(f"按天重试：{day_params}")
+                dr = requests.get(url, params=day_params, auth=auth, stream=True, timeout=600)
+                if dr.status_code == 404:
+                    logging.info(f"该日无归档：{day_params}")
+                    cur = day_end
+                    continue
+                dr.raise_for_status()
+                with zipfile.ZipFile(io.BytesIO(dr.content)) as dz:
+                    for name in dz.namelist():
+                        combined_zip.writestr(name, dz.read(name))
+                        wrote_any = True
+                cur = day_end
+        if not wrote_any:
+            raise FileNotFoundError("该时间段没有可导出的 Amplitude 数据（多次 404）。请确认数据中心域名与时间区间。")
+        return buf.getvalue()
+
+    r.raise_for_status()
+    return r.content  # zip 内容
 
 def parse_events_from_zip(zip_bytes: bytes):
     """
@@ -76,7 +109,7 @@ def parse_events_from_zip(zip_bytes: bytes):
 def aggregate_week(events_iter) -> Dict[str, int]:
     """
     指标：
-    - 周活跃用户：基于 user_id（优先），否则 device_id 去重
+    - 周活跃用户：优先 user_id，否则 device_id 去重
     - 事件数：总数
     """
     users: Set[str] = set()
