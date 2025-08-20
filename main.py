@@ -24,9 +24,9 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 TIMEZONE = os.getenv("AMPLITUDE_TIMEZONE", "UTC")
 # 区域（可选）：US 或 EU。若设置了 AMPLITUDE_BASE_URL，则忽略本项
 AMPLITUDE_REGION = os.getenv("AMPLITUDE_REGION", "").strip().upper()
-# US 默认为 https://amplitude.com
-# 如果你的项目在 EU 数据中心，请在 Secrets 里设置 AMPLITUDE_BASE_URL=https://analytics.eu.amplitude.com，或设置 AMPLITUDE_REGION=EU
-AMPLITUDE_BASE_URL = os.getenv("AMPLITUDE_BASE_URL") or ("https://analytics.eu.amplitude.com" if AMPLITUDE_REGION == "EU" else "https://amplitude.com")
+# 固定使用 https://analytics.amplitude.com
+# 注意：此域名可能不是正确的 Export API 端点，如遇 403 错误，脚本会自动尝试切换到正确的域名
+AMPLITUDE_BASE_URL = os.getenv("AMPLITUDE_BASE_URL") or "https://analytics.amplitude.com"
 
 def _normalize_base_url(u: str) -> str:
     if not u:
