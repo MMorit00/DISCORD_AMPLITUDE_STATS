@@ -241,16 +241,20 @@ def main():
     data_zip = amplitude_export(start_time, end_time)
     stats = aggregate_week(parse_events_from_zip(data_zip))
 
-    # 构建报告消息
+    # 构建报告消息（美化：分割线 + emoji）
     lines = []
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
     if TRIGGER_MODE == "SCHEDULED":
-        lines.append("Amplitude 上周统计数据")
+        lines.append("📊 Amplitude 上周统计")
     else:
-        lines.append("Amplitude 今日统计数据")
+        lines.append("📊 Amplitude 今日统计")
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append(f"🗓️ {period_label}（{time_range_str}）")
     lines.append("")
-    lines.append(f"{period_label} ({time_range_str})：")
-    lines.append(f"- 活跃用户：{stats['活跃用户']}")
-    lines.append(f"- 事件数：{stats['事件数']}")
+    lines.append(f"👥 活跃用户：**{stats['活跃用户']:,}**")
+    lines.append(f"🎯 事件数：**{stats['事件数']:,}**")
+    lines.append("")
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
     message = "\n".join(lines)
 
     logging.info("发送文本到 Discord")
