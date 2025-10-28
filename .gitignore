@@ -5,3 +5,16 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# Portfolio Report
+portfolio-report/data/*.csv
+portfolio-report/data/*.json
+!portfolio-report/data/.gitkeep
+portfolio-report/**/__pycache__/
+portfolio-report/**/*.pyc
+
+# Discord Bot
+discord-bot/**/__pycache__/
+discord-bot/**/*.pyc
+discord-bot/.env
+

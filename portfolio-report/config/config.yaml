@@ -1,0 +1,141 @@
+# 投资组合配置文件
+# 时区与时间窗口
+timezone: Asia/Shanghai
+
+# 报告时间
+report_times:
+  daily: "08:30"
+  weekly: "Mon 08:45"
+  monthly: "next_trading_day 09:45"
+  semiannual: "next_trading_day 10:00"
+
+# 战术信号推送时间（未知价原则：15:00 前必须确认）
+signal_times:
+  qdii_morning: "07:30"      # QDII 昨夜收盘信号推送
+  cn_init_check: "09:45"     # A股初筛（可选）
+  final_confirm: "14:40"     # 最终确认提醒（A股+QDII复核）
+  cutoff: "15:00"            # 交易截止时间
+
+# 目标权重
+target_weights:
+  US_QDII: 0.75
+  CSI300: 0.20
+  CGB_3_5Y: 0.05
+
+# 基金映射
+funds:
+  US_QDII:
+    - "018043"
+    - "018044"
+    - "019305"
+  CSI300:
+    - "000051"
+  CGB_3_5Y:
+    - "001512"
+
+# 基金名称
+fund_names:
+  "018043": "天弘纳斯达克100(QDII)A"
+  "018044": "天弘纳斯达克100(QDII)C"
+  "019305": "摩根标普500指数(QDII)C"
+  "000051": "沪深300联接A"
+  "001512": "易方达中债3-5年期国债指数A"
+
+# 基金类型（用于 T+N 判定）
+fund_types:
+  "018043": "QDII"
+  "018044": "QDII"
+  "019305": "QDII"
+  "000051": "domestic"
+  "001512": "domestic"
+
+# 资金计划
+cash_plans:
+  daily:
+    "018043": 100
+    "018044": 100
+    "019305": 100
+  monthly:
+    "000051": 300  # 可后续调整
+    "001512": 100
+
+# 再平衡与战术阈值
+thresholds:
+  rebalance_light_absolute: 0.05  # 5% 绝对偏离
+  rebalance_strong_relative: 0.20  # 20% 相对偏离
+  tactical_drawdown: 0.10  # 10% 回撤加仓
+  tactical_profit: 0.15  # 15% 超额减仓
+  cooldown_days:
+    light: 60
+    strong: 90
+    tactical: 30
+
+# 信号触发模式（未知价原则）
+signal_mode:
+  cn_stock:
+    # A股：当日盘中/收盘数据触发，14:40 推送，15:00 前执行
+    trigger_source: "intraday_or_close"  # 盘中或收盘
+    push_time: "14:40"
+    execution_cutoff: "15:00"
+    price_note: "按当日收盘净值成交（T日未知价）"
+  
+  qdii:
+    # QDII：昨夜收盘数据触发，07:30 推送，14:40 复核，15:00 前执行
+    trigger_source: "last_night_close"  # 昨夜收盘
+    morning_push_time: "07:30"
+    reconfirm_time: "14:40"
+    execution_cutoff: "15:00"
+    price_note: "按今晚收盘净值成交（T日未知价），T+2确认，遇境外节假日顺延"
+    risk_warning: "今晚若反向波动，成交价将偏离触发点"
+
+# LLM 路由配置
+llm_routing:
+  parse:
+    primary: "qwen_flash_ap"
+    fallbacks:
+      - "glm_flash_cn"
+      - "doubao_lite_cn"
+  write:
+    primary: "qwen_max_ap"
+    fallbacks:
+      - "glm_air_cn"
+
+# LLM 端点配置（环境变量优先）
+llm_endpoints:
+  qwen_flash_ap:
+    provider: "dashscope"
+    model: "qwen-turbo"
+    base_url: "https://dashscope-intl.aliyuncs.com/api/v1"  # 新加坡端点
+  qwen_max_ap:
+    provider: "dashscope"
+    model: "qwen-max"
+    base_url: "https://dashscope-intl.aliyuncs.com/api/v1"
+  glm_flash_cn:
+    provider: "zhipu"
+    model: "glm-4-flash"
+  glm_air_cn:
+    provider: "zhipu"
+    model: "glm-4-air"
+  doubao_lite_cn:
+    provider: "doubao"
+    model: "doubao-lite-128k"
+
+# 费率配置（用于风控提示）
+fees:
+  redemption_penalty_days: 7
+  redemption_penalty_rate: 0.015  # 1.5%
+  penalty_note: "持有不足7天赎回费≥1.5%，且全额计入基金财产"
+
+# 交易确认规则（支付宝口径）
+confirmation_rules:
+  cutoff_time: "15:00"  # 交易日分界线
+  cn_stock:
+    nav_date: "T"           # 净值日：当日
+    confirm_date: "T+1"     # 确认日：T+1
+    visible_date: "T+2"     # 可查日：T+2
+  qdii:
+    nav_date: "T+1"         # 净值日：T+1 计算
+    announce_date: "T+2"    # 公告日：T+2 内公告
+    confirm_date: "T+2"     # 确认日：T+2（遇海外节假日顺延）
+    note: "遇境外公众假日/休市会顺延"
+
