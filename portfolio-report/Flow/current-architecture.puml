@@ -3,7 +3,7 @@ skinparam backgroundColor white
 skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
 skinparam linetype ortho
 
-title Portfolio Report - 当前已实现架构 (v0.1)
+title Portfolio Report - 当前已实现架构 (v0.2)
 
 ' 样式定义
 skinparam component {
@@ -13,6 +13,8 @@ skinparam component {
   BorderColor<<source>> #FF9800
   BackgroundColor<<util>> #BBDEFB
   BorderColor<<util>> #2196F3
+  BackgroundColor<<report>> #E1BEE7
+  BorderColor<<report>> #9C27B0
   FontSize 14
 }
 
@@ -21,12 +23,18 @@ skinparam database {
   BorderColor #FBC02D
 }
 
+skinparam cloud {
+  BackgroundColor #E0F2F1
+  BorderColor #009688
+}
+
 ' ============================================================
 ' 数据层
 ' ============================================================
 
 database "transactions.csv" as TxDB
 database "holdings.json" as HoldingsDB  
+database "state.json" as StateDB
 database "config.yaml" as ConfigDB
 database "cache/" as CacheDB
 
@@ -37,7 +45,9 @@ database "cache/" as CacheDB
 package "Core Business" {
   [TradingCalendar\n交易日历] as Calendar <<core>>
   [Portfolio\n持仓管理] as Portfolio <<core>>
-  [Position\n单个持仓] as Position <<core>>
+  [Metrics\n收益指标] as Metrics <<core>>
+  [Signals\n信号引擎] as Signals <<core>>
+  [ConfirmPoller\n确认轮询] as ConfirmPoller <<core>>
 }
 
 ' ============================================================
@@ -46,6 +56,15 @@ package "Core Business" {
 
 package "Data Source" {
   [EastMoneyAPI\n东方财富] as EastMoney <<source>>
+}
+
+' ============================================================
+' 报告层
+' ============================================================
+
+package "Report Layer" {
+  [ReportBuilder\n报告生成] as ReportBuilder <<report>>
+  [CLI\nmain.py] as CLI <<report>>
 }
 
 ' ============================================================
@@ -63,15 +82,25 @@ package "Utils" {
 
 cloud "天天基金 API" as TianTian
 cloud "东方财富 API" as EastMoneyCloud
+cloud "Discord Webhook" as DiscordWebhook
+cloud "GitHub Actions\n定时触发" as GHActions
+cloud "cron-job.org\n外部定时" as CronJob
 
 ' ============================================================
 ' 关系：核心流程
 ' ============================================================
 
-Portfolio *-- Position : 持有多个
 Portfolio *-- Calendar : 使用
 Portfolio --> ConfigLoader : 读取配置
 Portfolio --> EastMoney : 获取净值
+Portfolio --> Metrics : 计算收益
+
+Signals --> Portfolio : 读取权重
+Signals --> Metrics : 读取指标
+Signals --> StateDB : 冷却状态
+
+ConfirmPoller --> Portfolio : 依赖
+ConfirmPoller --> EastMoney : 检查净值
 
 ' ============================================================
 ' 关系：数据层
@@ -79,9 +108,23 @@ Portfolio --> EastMoney : 获取净值
 
 Portfolio --> TxDB : 读取交易
 Portfolio --> HoldingsDB : 保存快照
+ConfirmPoller --> TxDB : 回填确认
 
 ConfigLoader --> ConfigDB : 读取
 EastMoney --> CacheDB : 缓存
+
+' ============================================================
+' 关系：报告层
+' ============================================================
+
+ReportBuilder --> Portfolio : 读取持仓
+ReportBuilder --> Signals : 读取信号
+ReportBuilder --> Discord : 推送报告
+
+CLI --> ReportBuilder : 生成报告
+CLI --> Calendar : 判定交易日
+CLI --> Portfolio : 刷新数据
+CLI --> Signals : 生成信号
 
 ' ============================================================
 ' 关系：数据源
@@ -91,17 +134,31 @@ EastMoney --> TianTian : 估值
 EastMoney --> EastMoneyCloud : 净值
 
 ' ============================================================
-' 核心流程（简化版）
+' 关系：部署层
+' ============================================================
+
+CronJob --> GHActions : 触发 workflow_dispatch
+GHActions --> CLI : 运行报告
+GHActions --> ConfirmPoller : 运行轮询
+
+ReportBuilder --> DiscordWebhook : 推送
+ConfirmPoller --> DiscordWebhook : 通知
+
+' ============================================================
+' 核心流程
 ' ============================================================
 
 note as Flow
-  <b>核心流程</b>
+  <b>完整流程</b>
   ━━━━━━━━━━━━
-  1. 读取交易记录
-  2. 构建持仓
-  3. 获取净值/估值
-  4. 计算权重
-  5. 保存快照
+  1. cron 触发 Actions
+  2. 读取交易记录
+  3. 构建持仓
+  4. 获取净值/估值
+  5. 计算权重
+  6. 生成信号
+  7. 生成报告
+  8. 推送 Discord
 end note
 
 Flow -[hidden]- Portfolio
@@ -111,17 +168,35 @@ Flow -[hidden]- Portfolio
 ' ============================================================
 
 legend right
-  |= 已实现模块 |
-  | TradingCalendar | 340行 |
-  | Portfolio | 361行 |
-  | EastMoneyAPI | 376行 |
-  | ConfigLoader | 93行 |
+  |= 已实现模块 (v0.2) |
+  | TradingCalendar | 340行 ✅ |
+  | Portfolio | 361行 ✅ |
+  | EastMoneyAPI | 376行 ✅ |
+  | Metrics | 174行 ✅ |
+  | Signals | 427行 ✅ |
+  | ReportBuilder | 233行 ✅ |
+  | CLI (main.py) | 165行 ✅ |
+  | ConfirmPoller | 238行 ✅ |
+  
+  |= GitHub Actions |
+  | daily.yml | ✅ |
+  | weekly.yml | ✅ |
+  | monthly.yml | ✅ |
+  | confirm-poll.yml | ✅ |
   
   |= 核心特性 |
   | 15:00 cutoff | ✅ |
   | 估/净并行 | ✅ |
   | T+N 确认 | ✅ |
   | 权重分析 | ✅ |
+  | 信号引擎 | ✅ |
+  | 自动报告 | ✅ |
+  | 确认回填 | ✅ |
+  
+  |= 待实现 (TODO) |
+  | Discord Bot | 🚧 |
+  | LLM 交互 | 🚧 |
+  | GitHub 幂等写入 | 🚧 |
 endlegend
 
 @enduml

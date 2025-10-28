@@ -1,0 +1,42 @@
+name: portfolio-monthly-report
+
+on:
+  workflow_dispatch: {}        # 手动触发 & 外部 cron 触发
+  # 注释掉不可靠的 schedule 触发，改用 cron-job.org 或本机 cron 定时调用 workflow_dispatch
+  # schedule:
+  #   - cron: "45 1 * * *"      # 每天 01:45 UTC = 09:45 CST
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install dependencies
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cd portfolio-report
+          uv sync
+
+      - name: Run monthly report
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TIMEZONE: Asia/Shanghai
+          LOG_LEVEL: INFO
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cd portfolio-report
+          uv run python main.py --freq monthly
+
