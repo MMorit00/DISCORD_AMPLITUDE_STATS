@@ -1,0 +1,306 @@
+@startuml Portfolio-Discord-Bot 核心架构
+skinparam backgroundColor white
+skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
+skinparam linetype ortho
+
+title Portfolio-Discord-Bot 核心架构（支付宝/QDII 口径）
+
+' 样式定义
+skinparam component {
+  BackgroundColor<<core>> #E3F2FD
+  BorderColor<<core>> #2196F3
+  BackgroundColor<<source>> #FFF3E0
+  BorderColor<<source>> #FF9800
+  BackgroundColor<<bot>> #F3E5F5
+  BorderColor<<bot>> #9C27B0
+  BackgroundColor<<report>> #E8F5E9
+  BorderColor<<report>> #4CAF50
+  FontSize 13
+}
+
+skinparam database {
+  BackgroundColor #FFF9C4
+  BorderColor #F57F17
+}
+
+skinparam arrow {
+  FontSize 10
+}
+
+' ============================================================
+' 数据层
+' ============================================================
+
+package "Data Layer" {
+  database "transactions.csv\n交易台账" as TxDB {
+    [tx_id, date, fund_code,\namount, shares, type,\nstatus, nav_kind,\ncutoff_flag, confirm_date...]
+  }
+  
+  database "holdings.json\n持仓快照" as HoldingsDB {
+    [positions, weights_net,\nweights_est, total_value...]
+  }
+  
+  database "state.json\n信号状态" as StateDB {
+    [last_signals, cooldown_tracker,\nsignal_history...]
+  }
+  
+  database "config.yaml\n配置中心" as ConfigDB {
+    [target_weights, funds,\nthresholds, signal_times...]
+  }
+}
+
+' ============================================================
+' 核心业务层
+' ============================================================
+
+package "Core Business Layer" {
+  
+  [TradingCalendar\n交易日历] as Calendar <<core>>
+  note right of Calendar
+    • 15:00 cutoff 判定
+    • CN/US 交易日判定
+    • T+N 确认日推演
+    • QDII 对齐逻辑
+  end note
+  
+  [Portfolio\n持仓管理] as Portfolio <<core>>
+  note right of Portfolio
+    • 从交易台账构建持仓
+    • 估/净并行计算
+    • 权重分析（净/估）
+    • 权重偏离计算
+  end note
+  
+  [Metrics\n收益指标] as Metrics <<core>>
+  note right of Metrics
+    TODO: 待实现
+    • XIRR 计算
+    • 最大回撤
+    • 90日高点/回撤
+  end note
+  
+  [Signals\n信号引擎] as Signals <<core>>
+  note right of Signals
+    TODO: 待实现
+    • 再平衡信号（轻/强）
+    • 战术信号（加仓/减仓）
+    • 冷却机制
+  end note
+  
+  [ConfirmPoller\n确认轮询器] as ConfirmPoller <<core>>
+  note right of ConfirmPoller
+    TODO: 待实现
+    • 10:30/18:30 定时轮询
+    • 净值/份额确认回填
+    • Discord 通知
+  end note
+}
+
+' ============================================================
+' 数据源层
+' ============================================================
+
+package "Data Source Layer" {
+  
+  [EastMoneyAPI\n东方财富] as EastMoney <<source>>
+  note right of EastMoney
+    • 实时估值（盘中）
+    • 最新净值（已公布）
+    • 历史净值序列
+    • 本地文件缓存（5分钟TTL）
+  end note
+  
+  cloud "天天基金 API\nfundgz.1234567.com.cn" as TianTian
+  cloud "东方财富 API\napi.fund.eastmoney.com" as EastMoneyCloud
+}
+
+' ============================================================
+' Bot 层（Discord 交互）
+' ============================================================
+
+package "Discord Bot Layer" {
+  
+  [DiscordBot\n常驻监听] as Bot <<bot>>
+  note right of Bot
+    TODO: 待实现
+    • Gateway 监听消息
+    • 自然语言解析（LLM）
+    • 命令执行与确认
+    • 用户权限校验
+  end note
+  
+  [LLMHandler\nFunction Calling] as LLM <<bot>>
+  note right of LLM
+    TODO: 待实现
+    • Qwen-Flash（主）
+    • GLM-Flash（兜底）
+    • Tool: skip_investment
+    • Tool: update_position
+    • Tool: confirm_shares
+  end note
+  
+  [GitHubSync\n幂等写入] as GitHubSync <<bot>>
+  note right of GitHubSync
+    TODO: 待实现
+    • If-Match 并发控制
+    • 事务ID幂等
+    • 软删除策略
+    • Commit 自动化
+  end note
+}
+
+' ============================================================
+' 报告层
+' ============================================================
+
+package "Report Layer" {
+  
+  [ReportBuilder\n报告生成器] as ReportBuilder <<report>>
+  note right of ReportBuilder
+    TODO: 待实现
+    • 日报（08:30）
+    • 周报（周一 08:45）
+    • 月报（次一交易日 09:45）
+    • 半年/年报
+  end note
+  
+  [CLI\n命令行入口] as CLI <<report>>
+  note right of CLI
+    TODO: 待实现
+    • main.py --freq daily
+    • 交易日感知
+    • 次一交易日判定
+  end note
+  
+  cloud "Discord Webhook\nwebhook.discord.com" as DiscordWebhook
+}
+
+' ============================================================
+' 部署层
+' ============================================================
+
+package "Deployment Layer" {
+  cloud "Render Background Worker\n常驻监听 Bot" as Render
+  cloud "GitHub Actions\n定时报告 + 确认轮询" as GHActions
+}
+
+' ============================================================
+' 关系：数据层
+' ============================================================
+
+ConfigDB -[hidden]right- TxDB
+TxDB -[hidden]right- HoldingsDB
+HoldingsDB -[hidden]right- StateDB
+
+' ============================================================
+' 关系：核心业务层 → 数据层
+' ============================================================
+
+Portfolio --> TxDB : 读取交易记录
+Portfolio --> HoldingsDB : 保存持仓快照
+Portfolio --> ConfigDB : 读取配置
+
+Calendar --> ConfigDB : 读取时区配置
+
+Signals --> StateDB : 读写冷却状态
+Signals --> ConfigDB : 读取阈值
+
+' ============================================================
+' 关系：核心业务层内部
+' ============================================================
+
+Portfolio *-- Calendar : 组合
+Portfolio --> EastMoney : 调用
+Portfolio --> Metrics : 计算收益
+Metrics --> Signals : 提供数据
+Signals --> Portfolio : 依赖权重
+
+ConfirmPoller --> Portfolio : 刷新
+ConfirmPoller --> TxDB : 回填份额
+
+' ============================================================
+' 关系：数据源层
+' ============================================================
+
+EastMoney --> TianTian : HTTP请求（估值）
+EastMoney --> EastMoneyCloud : HTTP请求（净值）
+
+' ============================================================
+' 关系：Bot 层
+' ============================================================
+
+Bot *-- LLM : 组合
+Bot *-- GitHubSync : 组合
+Bot --> TxDB : 修改（通过 GitHubSync）
+LLM --> Portfolio : 调用查询
+
+' ============================================================
+' 关系：报告层
+' ============================================================
+
+ReportBuilder --> Portfolio : 读取持仓
+ReportBuilder --> Signals : 读取信号
+ReportBuilder --> DiscordWebhook : 推送报告
+
+CLI --> ReportBuilder : 调用
+CLI --> Calendar : 判定交易日
+
+' ============================================================
+' 关系：部署层
+' ============================================================
+
+Render --> Bot : 运行
+GHActions --> CLI : 定时触发
+GHActions --> ConfirmPoller : 定时触发
+
+' ============================================================
+' 数据流：未知价原则（关键路径）
+' ============================================================
+
+together {
+  note as N1
+    <b>未知价原则流程</b>
+    ━━━━━━━━━━━━━━━━━━━━
+    <b>A股（14:40 提醒）</b>
+    1. 14:40 获取盘中估值
+    2. 触发战术信号判定
+    3. 推送 Discord 确认
+    4. 15:00 前执行 → T日成交
+    
+    <b>QDII（07:30 + 14:40）</b>
+    1. 07:30 获取昨夜收盘
+    2. 触发战术信号判定
+    3. 14:40 复核提醒
+    4. 15:00 前执行 → 今晚T日成交
+    5. T+2 确认（遇海外节假日顺延）
+  end note
+}
+
+' ============================================================
+' 图例
+' ============================================================
+
+legend right
+  |= 状态 |
+  | ✅ | 已实现 |
+  | TODO | 待实现 |
+  
+  |= 层次 |
+  | <color:#2196F3>Core</color> | 核心业务 |
+  | <color:#FF9800>Source</color> | 数据源 |
+  | <color:#9C27B0>Bot</color> | Discord交互 |
+  | <color:#4CAF50>Report</color> | 报告生成 |
+  
+  |= 关系 |
+  | *-- | 组合 |
+  | --> | 依赖/调用 |
+  
+  |= 已完成 |
+  | ✅ | TradingCalendar |
+  | ✅ | EastMoneyAPI |
+  | ✅ | Portfolio |
+  | ✅ | ConfigLoader |
+endlegend
+
+@enduml
+

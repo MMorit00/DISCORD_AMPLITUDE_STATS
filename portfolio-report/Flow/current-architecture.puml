@@ -1,0 +1,366 @@
+@startuml 当前已实现架构（v0.1）
+skinparam backgroundColor white
+skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
+skinparam linetype ortho
+
+title Portfolio Report - 当前已实现架构（v0.1）\n支付宝/QDII 口径 + 估/净并行
+
+' 样式定义
+skinparam component {
+  BackgroundColor<<implemented>> #C8E6C9
+  BorderColor<<implemented>> #4CAF50
+  BackgroundColor<<config>> #BBDEFB
+  BorderColor<<config>> #2196F3
+  BackgroundColor<<data>> #FFF9C4
+  BorderColor<<data>> #FBC02D
+  FontSize 13
+}
+
+skinparam database {
+  BackgroundColor #FFE0B2
+  BorderColor #F57C00
+}
+
+skinparam arrow {
+  FontSize 10
+  Color #424242
+}
+
+' ============================================================
+' 配置层（已实现）
+' ============================================================
+
+package "Configuration Layer ✅" {
+  
+  [ConfigLoader\n配置加载器] as ConfigLoader <<config>>
+  note right of ConfigLoader
+    <b>✅ 已实现</b>
+    ━━━━━━━━━━━━━━
+    • YAML 配置解析
+    • 目标权重：75%/20%/5%
+    • 基金映射与类型
+    • LLM 路由配置
+    • 阈值与时间窗配置
+  end note
+  
+  database "config.yaml" as ConfigFile {
+    target_weights:
+      US_QDII: 0.75
+      CSI300: 0.20
+      CGB_3_5Y: 0.05
+    
+    signal_times:
+      qdii_morning: "07:30"
+      final_confirm: "14:40"
+      cutoff: "15:00"
+    
+    thresholds:
+      rebalance_light: 0.05
+      rebalance_strong: 0.20
+      tactical_drawdown: 0.10
+  }
+  
+  ConfigLoader --> ConfigFile : 读取
+}
+
+' ============================================================
+' 数据层（已实现）
+' ============================================================
+
+package "Data Layer ✅" {
+  
+  database "transactions.csv\n交易台账" as TxDB {
+    <b>已支持字段：</b>
+    • tx_id, date, fund_code
+    • amount, shares, type
+    • cutoff_flag (pre15/post15)
+    • expected_nav_date
+    • expected_confirm_date
+    • confirm_date, status
+    • nav_kind (估/净)
+  }
+  
+  database "holdings.json\n持仓快照" as HoldingsDB {
+    <b>自动生成：</b>
+    • positions (各基金持仓)
+    • total_value_net (总市值-净)
+    • total_value_est (总市值-估)
+    • weights_net (权重-净)
+    • weights_est (权重-估)
+  }
+  
+  database "data/cache/\n本地缓存" as CacheDir {
+    nav_{code}_{date}.json
+    estimate_{code}_{time}.json
+    TTL: 5分钟
+  }
+}
+
+' ============================================================
+' 核心业务层（已实现）
+' ============================================================
+
+package "Core Business Layer ✅" {
+  
+  [TradingCalendar\n交易日历管理] as Calendar <<implemented>>
+  note right of Calendar
+    <b>✅ 已实现（340行）</b>
+    ━━━━━━━━━━━━━━
+    <b>核心功能：</b>
+    • 15:00 cutoff 判定
+    • CN 交易日（chinesecalendar）
+    • US 交易日（主要假日）
+    • A股 T+1 确认推演
+    • QDII T+2 确认推演
+    • 中美市场对齐
+    
+    <b>测试覆盖：</b>
+    ✓ cutoff 前后判定
+    ✓ 交易日/周末判定
+    ✓ 确认日推演
+    ✓ 跨周末查找
+  end note
+  
+  [Portfolio\n持仓管理] as Portfolio <<implemented>>
+  note right of Portfolio
+    <b>✅ 已实现（361行）</b>
+    ━━━━━━━━━━━━━━
+    <b>核心功能：</b>
+    • 从交易台账构建持仓
+    • 估/净并行计算
+    • 权重分析（按资产类别）
+    • 权重偏离（绝对/相对）
+    • 持仓快照保存
+    
+    <b>测试结果：</b>
+    ✓ 5个持仓构建成功
+    ✓ 总市值 ¥8144.31
+    ✓ 权重偏离计算
+    ✓ 快照保存
+  end note
+  
+  [Position\n单个持仓] as Position <<implemented>>
+  note right of Position
+    <b>✅ 已实现</b>
+    ━━━━━━━━━━━━━━
+    • 份额管理（Decimal精度）
+    • 净值/估值双轨道
+    • 市值自动计算
+    • 资产类别标识
+    • 序列化/反序列化
+  end note
+}
+
+' ============================================================
+' 数据源层（已实现）
+' ============================================================
+
+package "Data Source Layer ✅" {
+  
+  [EastMoneyAPI\n东方财富数据源] as EastMoney <<implemented>>
+  note right of EastMoney
+    <b>✅ 已实现（376行）</b>
+    ━━━━━━━━━━━━━━
+    <b>API 接口：</b>
+    1. 实时估值（盘中）
+       fundgz.1234567.com.cn
+    2. 最新净值（已公布）
+       api.fund.eastmoney.com
+    3. 历史净值序列
+    
+    <b>特性：</b>
+    • 本地文件缓存（5分钟TTL）
+    • 智能选择净值/估值
+    • JSONP 格式解析
+    • 单例模式管理
+    
+    <b>测试验证：</b>
+    ✓ A股估值获取
+    ✓ QDII净值获取
+    ✓ 智能获取策略
+    ✓ 历史数据查询
+    ✓ 缓存功能
+  end note
+  
+  cloud "天天基金 API" as TianTian #FFE0B2
+  cloud "东方财富 API" as EastMoneyCloud #FFE0B2
+}
+
+' ============================================================
+' 工具层（已实现）
+' ============================================================
+
+package "Utils Layer ✅" {
+  
+  [Discord\nWebhook推送] as Discord <<implemented>>
+  note right of Discord
+    <b>✅ 已实现（69行）</b>
+    ━━━━━━━━━━━━━━
+    • post_to_discord()
+    • create_embed()
+    • 复用amplitude-report逻辑
+    • 支持 Embed 美化
+  end note
+}
+
+' ============================================================
+' 关系：配置层
+' ============================================================
+
+Portfolio --> ConfigLoader : 读取配置
+Calendar --> ConfigLoader : 读取时区
+EastMoney --> ConfigLoader : 读取缓存配置
+
+' ============================================================
+' 关系：核心业务层
+' ============================================================
+
+Portfolio *-- Position : 组合（多个持仓）
+Portfolio *-- Calendar : 组合（交易日判定）
+Portfolio --> EastMoney : 调用获取净值
+
+' ============================================================
+' 关系：数据层
+' ============================================================
+
+Portfolio --> TxDB : 读取交易记录
+Portfolio --> HoldingsDB : 保存持仓快照
+
+EastMoney --> CacheDir : 读写缓存
+
+' ============================================================
+' 关系：数据源层
+' ============================================================
+
+EastMoney --> TianTian : HTTP (估值)
+EastMoney --> EastMoneyCloud : HTTP (净值)
+
+' ============================================================
+' 数据流：完整刷新流程
+' ============================================================
+
+note as DataFlow
+  <b>完整刷新流程（Portfolio.refresh）</b>
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  <b>Step 1: 构建持仓</b>
+  TxDB → Portfolio.load_transactions()
+         → Portfolio.build_positions()
+         → 聚合份额（按fund_code）
+         → 创建 Position 对象
+  
+  <b>Step 2: 获取净值/估值</b>
+  Portfolio → EastMoney.get_nav_or_estimate()
+            → 优先净值，盘中返回估值
+            → Position.update_nav() / update_estimate()
+            → 计算市值（shares * nav/estimate）
+  
+  <b>Step 3: 计算权重</b>
+  Portfolio → 按资产类别汇总市值
+            → 计算 weights_net (净口径)
+            → 计算 weights_est (估口径)
+            → 计算权重偏离（vs 目标）
+  
+  <b>Step 4: 保存快照</b>
+  Portfolio → HoldingsDB (JSON格式)
+            → 包含估/净双轨道数据
+end note
+
+DataFlow -[hidden]down- Portfolio
+
+' ============================================================
+' 实际运行示例
+' ============================================================
+
+note as Example
+  <b>实际测试结果（2025-10-28）</b>
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  <b>持仓构建：</b>
+  • 000051 (CSI300): 3850.17份
+  • 001512 (CGB_3_5Y): 331.56份
+  • 018043 (US_QDII): 162.62份
+  • 018044 (US_QDII): 162.71份
+  • 019305 (US_QDII): 192.16份
+  
+  <b>市值计算：</b>
+  • 总市值(净): ¥8,144.31
+  • CSI300: ¥6,793.62 (83.42%)
+  • US_QDII: ¥897.27 (11.02%)
+  • CGB_3_5Y: ¥453.41 (5.57%)
+  
+  <b>权重偏离：</b>
+  • US_QDII: 目标75% → 实际11.02%
+    绝对偏离 63.98%，相对偏离 85.31%
+  • CSI300: 目标20% → 实际83.42%
+    绝对偏离 63.42%，相对偏离 317.08%
+  • CGB_3_5Y: 目标5% → 实际5.57%
+    绝对偏离 0.57%，相对偏离 11.34%
+end note
+
+Example -[hidden]down- Portfolio
+
+' ============================================================
+' 技术特点
+' ============================================================
+
+note as TechHighlights
+  <b>技术亮点</b>
+  ━━━━━━━━━━━━━━━━━━━━
+  
+  <b>1. 估/净并行架构</b>
+  • Position 同时维护 nav 和 estimate_value
+  • Portfolio 并行计算 weights_net 和 weights_est
+  • 报告可根据数据新鲜度选择展示口径
+  
+  <b>2. 未知价原则支持</b>
+  • 15:00 cutoff 精确判定
+  • Trade_day_cn 自动推演
+  • QDII T+2 确认（含海外节假日）
+  
+  <b>3. 精度与性能</b>
+  • Decimal 类型保证金融精度
+  • 本地缓存减少API调用
+  • 单例模式优化资源使用
+  
+  <b>4. 可测试性</b>
+  • 完整的单元测试覆盖
+  • 样例数据（transactions_sample.csv）
+  • 真实API验证（天天基金/东方财富）
+end note
+
+TechHighlights -[hidden]down- Calendar
+
+' ============================================================
+' 项目统计
+' ============================================================
+
+legend right
+  |= 代码统计 (v0.1) |
+  | 总行数 | ~3,200+ |
+  | 核心模块 | 4 个 ✅ |
+  | 测试文件 | 3 个 ✅ |
+  | Git提交 | 5 个 |
+  
+  |= 已实现模块 |
+  | TradingCalendar | 340行 ✅ |
+  | Portfolio | 361行 ✅ |
+  | EastMoneyAPI | 376行 ✅ |
+  | ConfigLoader | 93行 ✅ |
+  | Discord Utils | 69行 ✅ |
+  
+  |= 测试覆盖 |
+  | 交易日历测试 | ✅ 全通过 |
+  | 净值抓取测试 | ✅ 全通过 |
+  | 持仓管理测试 | ✅ 全通过 |
+  
+  |= 下一步 TODO |
+  | Metrics | 收益/XIRR/回撤 |
+  | Signals | 再平衡/战术信号 |
+  | ConfirmPoller | 确认轮询器 |
+  | ReportBuilder | 报告生成 |
+  | DiscordBot | LLM交互 |
+endlegend
+
+@enduml
+

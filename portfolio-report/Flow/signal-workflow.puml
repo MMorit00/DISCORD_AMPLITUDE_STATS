@@ -1,0 +1,158 @@
+@startuml 战术信号触发流程（未知价原则）
+skinparam backgroundColor white
+skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
+
+title 战术信号触发流程（未知价原则 + 15:00 Cutoff）
+
+autonumber
+
+' 参与者
+actor "用户" as User
+participant "GitHub Actions\n定时任务" as Actions
+participant "Portfolio\n持仓管理" as Portfolio
+participant "EastMoneyAPI\n数据源" as API
+participant "Signals\n信号引擎" as Signals
+participant "Discord Webhook" as Discord
+participant "Discord Bot\n常驻监听" as Bot
+database "transactions.csv" as DB
+
+' ============================================================
+' A股信号流程（当日盘中数据）
+' ============================================================
+
+group A股信号流程（14:40 触发）
+  
+  Actions -> Actions : 14:40 CST 定时触发
+  Actions -> Portfolio : refresh(prefer_estimate=True)
+  
+  Portfolio -> API : get_nav_or_estimate(000051)
+  API --> Portfolio : 估值数据（盘中）
+  
+  Portfolio -> Portfolio : calculate_weights()
+  Portfolio --> Actions : 权重(估): 83.42%
+  
+  Actions -> Signals : check_tactical_signals()
+  
+  alt 触发战术信号
+    Signals -> Signals : 判定：回撤≥10% 或 超额>15%
+    Signals --> Actions : 信号：加仓 100元
+    
+    Actions -> Discord : 推送确认消息
+    note right
+      **⚠️ A股战术提醒**
+      
+      沪深300联接(000051)
+      • 回撤：12.5%（触发加仓）
+      • 建议加码：100元
+      • 截止时间：**15:00**
+      • 成交价：按当日收盘净值（T日未知价）
+      
+      **回复 ✅ 确认执行 | ❌ 取消**
+    end note
+    
+    Discord --> User : 显示消息
+    
+    User -> Bot : 回复 "✅"
+    Bot -> Bot : LLM解析意图
+    Bot -> DB : 写入交易记录（status=pending）
+    Bot -> Discord : 确认已记录，等待 15:00 前提交
+    
+    alt 15:00 前确认
+      Bot -> DB : 更新 cutoff_flag=pre15, trade_day_cn=T
+      Bot -> Discord : ✅ 已提交，预计 T+1 确认
+    else 15:00 后
+      Bot -> DB : 更新 cutoff_flag=post15, trade_day_cn=T+1
+      Bot -> Discord : ⚠️ 逾期，顺延至下一交易日
+    end
+    
+  else 未触发
+    Signals --> Actions : 无信号
+  end
+  
+end
+
+' ============================================================
+' QDII 信号流程（昨夜收盘数据）
+' ============================================================
+
+group QDII信号流程（07:30 + 14:40 双推送）
+  
+  == 07:30 晨间推送 ==
+  
+  Actions -> Actions : 07:30 CST 定时触发
+  Actions -> Portfolio : refresh(prefer_estimate=False)
+  
+  Portfolio -> API : get_latest_nav(018043)
+  API --> Portfolio : 净值数据（昨夜收盘）
+  
+  Portfolio -> Portfolio : calculate_weights()
+  Portfolio --> Actions : 权重(净): 11.02%
+  
+  Actions -> Signals : check_tactical_signals()
+  
+  alt 触发战术信号
+    Signals -> Signals : 判定：基于昨夜收盘数据
+    Signals --> Actions : 信号：减仓 100元
+    
+    Actions -> Discord : 推送晨间提醒
+    note right
+      **📊 QDII 战术提醒（昨夜收盘）**
+      
+      天弘纳斯达克100(018043)
+      • 昨夜收盘：1.8424
+      • 超额收益：18.5%（触发减仓）
+      • 建议减码：100元
+      
+      **14:40 将发送复核提醒**
+    end note
+    
+  end
+  
+  == 14:40 复核提醒 ==
+  
+  Actions -> Actions : 14:40 CST 定时触发
+  Actions -> Discord : 推送复核确认
+  note right
+    **⚠️ QDII 复核提醒**
+    
+    天弘纳斯达克100(018043)
+    • 截止时间：**15:00**
+    • 成交价：按今晚收盘净值（T日未知价）
+    • 确认时间：预计 **T+2**（遇境外节假日顺延）
+    • ⚠️ 风险：今晚若反向波动，成交价将偏离
+    
+    **回复 ✅ 确认执行 | ❌ 取消**
+  end note
+  
+  User -> Bot : 回复 "✅"
+  Bot -> Bot : LLM解析 + 函数调用
+  Bot -> DB : 写入交易（fund_type=QDII）
+  Bot -> Discord : ✅ 已记录，等待 T+2 确认
+  
+end
+
+' ============================================================
+' 确认轮询流程
+' ============================================================
+
+group 确认轮询流程（10:30 / 18:30）
+  
+  Actions -> Actions : 10:30 或 18:30 CST
+  Actions -> Portfolio : 遍历 pending 交易
+  
+  loop 每笔待确认交易
+    Portfolio -> API : get_latest_nav(fund_code)
+    API --> Portfolio : 净值 + 净值日期
+    
+    alt 净值日期 >= expected_confirm_date
+      Portfolio -> DB : 回填 shares, status=confirmed, nav_kind=净
+      Portfolio -> Discord : ✅ {fund_code} 已确认 {shares} 份
+    else 尚未确认
+      Portfolio --> Actions : 跳过，等待下次轮询
+    end
+  end
+  
+end
+
+@enduml
+
