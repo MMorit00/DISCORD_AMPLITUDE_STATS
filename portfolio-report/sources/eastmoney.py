@@ -373,3 +373,4 @@ def get_fund_api(cache_dir: Optional[str] = None, cache_ttl: int = 300) -> EastM
         _api_instance = EastMoneyFundAPI(cache_dir, cache_ttl)
     return _api_instance
 
+

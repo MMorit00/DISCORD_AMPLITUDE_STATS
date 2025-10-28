@@ -1,0 +1,109 @@
+@startuml BotArchitecture
+skinparam backgroundColor white
+skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
+skinparam linetype ortho
+
+title Discord Bot - 架构图 (v0.1)
+
+' 样式定义
+skinparam component {
+  BackgroundColor<<bot>> #E1BEE7
+  BorderColor<<bot>> #9C27B0
+  BackgroundColor<<llm>> #FFE0B2
+  BorderColor<<llm>> #FF9800
+  BackgroundColor<<sync>> #C8E6C9
+  BorderColor<<sync>> #4CAF50
+  FontSize 14
+}
+
+skinparam database {
+  BackgroundColor #FFF9C4
+  BorderColor #FBC02D
+}
+
+skinparam cloud {
+  BackgroundColor #E0F2F1
+  BorderColor #009688
+}
+
+' ============================================================
+' 核心模块
+' ============================================================
+
+[Bot\n主程序] as Bot <<bot>>
+[LLMHandler\n函数调用] as LLM <<llm>>
+[FunctionExecutor\n工具执行] as Executor <<bot>>
+[GitHubSync\n幂等写入] as GitHubSync <<sync>>
+
+' ============================================================
+' 数据与服务
+' ============================================================
+
+database "transactions.csv" as TxDB
+database "holdings.json" as HoldingsDB
+
+cloud "Discord\nGateway" as Discord
+cloud "Qwen\n(新加坡)" as Qwen
+cloud "GLM/OpenAI\n(兜底)" as Fallback
+cloud "GitHub API" as GitHubAPI
+
+' ============================================================
+' 关系
+' ============================================================
+
+Bot --> Discord : 监听消息
+Bot --> LLM : 解析
+Bot --> Executor : 执行
+
+LLM --> Qwen : 主LLM
+LLM --> Fallback : 降级
+
+Executor --> GitHubSync : 调用
+
+GitHubSync --> GitHubAPI : 读写
+GitHubAPI --> TxDB : 修改
+GitHubAPI --> HoldingsDB : 读取
+
+' ============================================================
+' 流程
+' ============================================================
+
+note as Flow
+  <b>交互流程</b>
+  ━━━━━━━━━━
+  1. 用户发消息
+  2. LLM 解析
+  3. 执行函数
+  4. GitHub 写入
+  5. 回复确认
+end note
+
+Flow -[hidden]- Bot
+
+' ============================================================
+' 图例
+' ============================================================
+
+legend right
+  |= 核心模块 (4个) |
+  | Bot | 179行 ✅ |
+  | LLMHandler | 181行 ✅ |
+  | Functions | 319行 ✅ |
+  | GitHubSync | 393行 ✅ |
+  
+  |= 工具函数 (5个) |
+  | skip_investment | ✅ |
+  | update_position | ✅ |
+  | confirm_shares | ✅ |
+  | query_status | ✅ |
+  | delete_transaction | ✅ |
+  
+  |= 特性 |
+  | 自然语言 | ✅ |
+  | 幂等写入 | ✅ |
+  | LLM降级 | ✅ |
+  | 权限控制 | ✅ |
+endlegend
+
+@enduml
+

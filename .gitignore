@@ -8,8 +8,11 @@ __pycache__/
 
 # Portfolio Report
 portfolio-report/data/*.csv
+!portfolio-report/data/transactions.csv      # 交易台账需要提交到 Git
+!portfolio-report/data/transactions_sample.csv  # 样例数据
 portfolio-report/data/*.json
 !portfolio-report/data/.gitkeep
+portfolio-report/data/cache/                 # 缓存目录完全排除
 portfolio-report/**/__pycache__/
 portfolio-report/**/*.pyc
 
