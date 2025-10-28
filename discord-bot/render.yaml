@@ -1,0 +1,26 @@
+services:
+  - type: background
+    name: portfolio-discord-bot
+    env: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -e .
+    startCommand: python bot.py
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: ALLOWED_USER_IDS
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        value: MMorit00/DISCORD_AMPLITUDE_STATS
+      - key: DASHSCOPE_API_KEY
+        sync: false
+      - key: TZ
+        value: Asia/Shanghai
+      - key: LOG_LEVEL
+        value: INFO
+    healthCheckPath: /
+    autoDeploy: true
+
