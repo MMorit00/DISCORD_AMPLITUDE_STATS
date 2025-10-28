@@ -1,9 +1,10 @@
 name: amplitude-weekly
 
 on:
-  workflow_dispatch: {}        # 手动触发
-  schedule:
-    - cron: "0 1 * * 1"        # 周一 01:00 UTC（北京 09:00）
+  workflow_dispatch: {}        # 手动触发 & 外部 API 触发
+  # 注释掉不可靠的 schedule 触发，改用 cron-job.org 定时调用 workflow_dispatch
+  # schedule:
+  #   - cron: "0 1 * * 1"        # 周一 01:00 UTC（北京 09:00）- GitHub Actions 延迟问题严重
 
 jobs:
   run:
@@ -23,24 +24,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run weekly report (Scheduled)
-        if: github.event_name == 'schedule'
+      - name: Run weekly report (Scheduled via cron-job.org or manual)
         env:
           AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
           AMPLITUDE_SECRET_KEY: ${{ secrets.AMPLITUDE_SECRET_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           AMPLITUDE_TIMEZONE: Asia/Shanghai
           AMPLITUDE_BASE_URL: ${{ secrets.AMPLITUDE_BASE_URL }}
+          # 默认使用 SCHEDULED 模式（查询上周数据）
+          # 如需手动触发查询今日数据，在 GitHub Actions UI 中手动触发时，可以临时改为 MANUAL
           TRIGGER_MODE: SCHEDULED
-        run: python main.py
-
-      - name: Run daily report (Manual)
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
-          AMPLITUDE_SECRET_KEY: ${{ secrets.AMPLITUDE_SECRET_KEY }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          AMPLITUDE_TIMEZONE: Asia/Shanghai
-          AMPLITUDE_BASE_URL: ${{ secrets.AMPLITUDE_BASE_URL }}
-          TRIGGER_MODE: MANUAL
         run: python main.py
