@@ -1,0 +1,86 @@
+@startuml LLMRouting
+skinparam backgroundColor white
+skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
+
+title LLM 路由与降级策略
+
+participant "Bot" as Bot
+participant "LLMHandler" as Handler
+participant "Qwen\n(新加坡)" as Qwen
+participant "GLM\n(国内)" as GLM
+participant "OpenAI" as OpenAI
+
+' ============================================================
+' 正常流程：Qwen 成功
+' ============================================================
+
+Bot -> Handler: parse_message("今天没定投 018043")
+activate Handler
+
+Handler -> Qwen: chat.completions.create()
+activate Qwen
+
+Qwen -> Qwen: Function Calling
+note right: tools: [\n  skip_investment,\n  update_position,\n  ...\n]
+
+Qwen --> Handler: tool_call:\nskip_investment(\n  date="today",\n  fund_code="018043"\n)
+deactivate Qwen
+
+Handler --> Bot: 返回函数调用
+deactivate Handler
+
+note over Bot: ✅ 主 LLM 成功
+
+' ============================================================
+' 降级流程：Qwen 失败 → GLM
+' ============================================================
+
+Bot -> Handler: parse_message("调整 000051 +500")
+activate Handler
+
+Handler -> Qwen: chat.completions.create()
+activate Qwen
+
+Qwen --> Handler: ❌ 超时/错误
+deactivate Qwen
+
+Handler -> Handler: 捕获异常\n切换兜底 LLM
+
+Handler -> GLM: chat.completions.create()
+activate GLM
+
+GLM -> GLM: Function Calling
+
+GLM --> Handler: tool_call:\nupdate_position(\n  fund_code="000051",\n  amount=500\n)
+deactivate GLM
+
+Handler --> Bot: 返回函数调用
+deactivate Handler
+
+note over Bot: ✅ 兜底 LLM 成功
+
+' ============================================================
+' 二次降级：GLM 失败 → OpenAI
+' ============================================================
+
+Bot -> Handler: parse_message("查询持仓")
+activate Handler
+
+Handler -> Qwen: ❌ 失败
+Handler -> GLM: ❌ 失败
+
+Handler -> OpenAI: chat.completions.create()
+activate OpenAI
+
+OpenAI -> OpenAI: Function Calling
+
+OpenAI --> Handler: tool_call:\nquery_status()
+deactivate OpenAI
+
+Handler --> Bot: 返回函数调用
+deactivate Handler
+
+note over Bot: ✅ 最终兜底成功
+
+@enduml
+
