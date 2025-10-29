@@ -38,5 +38,5 @@ jobs:
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           cd portfolio-report
-          uv run python main.py --freq weekly
+          uv run python main.py --freq weekly --force
 
