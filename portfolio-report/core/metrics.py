@@ -10,87 +10,62 @@ import numpy_financial as npf
 logger = logging.getLogger(__name__)
 
 
-class MetricsCalculator:
-    """收益与风险指标计算器"""
+# ==================
+# Types & Constants
+# ==================
+
+# 轻量类型别名，增强可读性
+Cashflow = Tuple[date, Decimal]
+NavPoint = Tuple[date, Decimal]
+NavSeries = List[NavPoint]
+
+
+# ==================
+# Services（服务层）
+# ==================
+
+class XirrService:
+    """XIRR 计算服务：不规则现金流内部收益率"""
     
-    def __init__(self):
-        pass
-    
-    def calculate_xirr(
-        self,
-        cashflows: List[Tuple[date, Decimal]]
-    ) -> Optional[float]:
-        """
-        计算 XIRR（不规则现金流内部收益率）
-        
-        Args:
-            cashflows: [(日期, 现金流), ...]
-                      买入为负，赎回/当前市值为正
-        
-        Returns:
-            年化收益率（如 0.15 表示 15%）
-        """
+    def calculate(self, cashflows: List[Cashflow]) -> Optional[float]:
+        """计算 XIRR，买入为负、赎回/当前市值为正"""
         if len(cashflows) < 2:
             logger.warning("XIRR 计算需要至少 2 个现金流")
             return None
         
         try:
-            # 转换为 numpy 数组
+            # 转换为 numpy-financial 输入
             dates = [cf[0] for cf in cashflows]
             amounts = [float(cf[1]) for cf in cashflows]
-            
-            # 使用 numpy-financial 的 xirr
-            # 注意：需要将日期转换为从第一天开始的天数
+            # 备注：xirr 通常基于 xnpv 数值求解；此处沿用 irr 近似
             start_date = min(dates)
-            days = [(d - start_date).days for d in dates]
-            
-            # 使用 xnpv 和数值求解计算 xirr
-            # 简化：使用 irr 的近似计算
+            _days = [(d - start_date).days for d in dates]  # 占位，保留思路
             result = npf.irr(amounts)
-            
-            if result is None or abs(result) > 10:  # 异常值过滤
+            if result is None or abs(result) > 10:
                 logger.warning(f"XIRR 计算结果异常: {result}")
                 return None
-            
             return float(result)
-        
         except Exception as e:
             logger.error(f"XIRR 计算失败: {e}")
             return None
+
+
+class ReturnService:
+    """区间收益率计算服务"""
     
-    def calculate_returns(
-        self,
-        start_value: Decimal,
-        end_value: Decimal
-    ) -> Decimal:
-        """
-        计算区间收益率
-        
-        Args:
-            start_value: 期初市值
-            end_value: 期末市值
-        
-        Returns:
-            收益率（如 0.15 表示 15%）
-        """
+    def calculate(self, start_value: Decimal, end_value: Decimal) -> Decimal:
         if start_value <= 0:
             return Decimal("0")
-        
         return (end_value - start_value) / start_value
+
+
+class DrawdownService:
+    """回撤相关计算服务（最大回撤、窗口回撤）"""
     
     def calculate_max_drawdown(
         self,
-        nav_series: List[Tuple[date, Decimal]]
+        nav_series: NavSeries
     ) -> Tuple[Optional[Decimal], Optional[date], Optional[date]]:
-        """
-        计算最大回撤
-        
-        Args:
-            nav_series: [(日期, 净值), ...] 按时间升序
-        
-        Returns:
-            (最大回撤幅度, 高点日期, 低点日期)
-        """
         if len(nav_series) < 2:
             return None, None, None
         
@@ -100,12 +75,9 @@ class MetricsCalculator:
         peak_value = nav_series[0][1]
         
         for dt, value in nav_series:
-            # 更新峰值
             if value > peak_value:
                 peak_value = value
                 peak_date = dt
-            
-            # 计算当前回撤
             if peak_value > 0:
                 dd = (value - peak_value) / peak_value
                 if dd < max_dd:
@@ -114,50 +86,79 @@ class MetricsCalculator:
         
         return max_dd, peak_date, trough_date
     
-    def calculate_90d_drawdown(
+    def calculate_window_drawdown(
         self,
-        nav_series: List[Tuple[date, Decimal]],
+        nav_series: NavSeries,
+        window_days: int = 90,
         reference_date: Optional[date] = None
     ) -> Tuple[Optional[Decimal], Optional[Decimal]]:
-        """
-        计算近90日高点与回撤
-        
-        Args:
-            nav_series: [(日期, 净值), ...] 按时间升序
-            reference_date: 参考日期（默认为最后一个日期）
-        
-        Returns:
-            (90日高点净值, 当前相对高点的回撤幅度)
-        """
         if not nav_series:
             return None, None
-        
         if reference_date is None:
             reference_date = nav_series[-1][0]
         
-        # 筛选近90天的数据
         from datetime import timedelta
-        cutoff_date = reference_date - timedelta(days=90)
-        
+        cutoff_date = reference_date - timedelta(days=window_days)
         recent_series = [
             (dt, val) for dt, val in nav_series
             if dt >= cutoff_date and dt <= reference_date
         ]
-        
         if len(recent_series) < 2:
             return None, None
         
-        # 找到90日高点
         peak_value = max(val for _, val in recent_series)
         current_value = recent_series[-1][1]
-        
-        # 计算回撤
         if peak_value > 0:
             drawdown = (current_value - peak_value) / peak_value
         else:
             drawdown = Decimal("0")
-        
         return peak_value, drawdown
+
+
+# ==================
+# Facade（对外门面：编排服务）
+# ==================
+
+class MetricsCalculator:
+    """收益与风险指标计算器（编排层）"""
+    
+    def __init__(self):
+        # 组装服务
+        self._xirr_service = XirrService()
+        self._return_service = ReturnService()
+        self._drawdown_service = DrawdownService()
+    
+    def calculate_xirr(
+        self,
+        cashflows: List[Cashflow]
+    ) -> Optional[float]:
+        """计算 XIRR（委托 XirrService）"""
+        return self._xirr_service.calculate(cashflows)
+    
+    def calculate_returns(
+        self,
+        start_value: Decimal,
+        end_value: Decimal
+    ) -> Decimal:
+        """计算区间收益率（委托 ReturnService）"""
+        return self._return_service.calculate(start_value, end_value)
+    
+    def calculate_max_drawdown(
+        self,
+        nav_series: NavSeries
+    ) -> Tuple[Optional[Decimal], Optional[date], Optional[date]]:
+        """计算最大回撤（委托 DrawdownService）"""
+        return self._drawdown_service.calculate_max_drawdown(nav_series)
+    
+    def calculate_90d_drawdown(
+        self,
+        nav_series: NavSeries,
+        reference_date: Optional[date] = None
+    ) -> Tuple[Optional[Decimal], Optional[Decimal]]:
+        """计算近90日高点与回撤（委托 DrawdownService）"""
+        return self._drawdown_service.calculate_window_drawdown(
+            nav_series, window_days=90, reference_date=reference_date
+        )
 
 
 # 全局实例

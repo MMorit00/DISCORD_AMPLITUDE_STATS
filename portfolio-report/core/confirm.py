@@ -5,7 +5,7 @@
 import csv
 import logging
 from datetime import datetime, date
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TypedDict, Callable
 from pathlib import Path
 
 from utils.config_loader import ConfigLoader
@@ -15,6 +15,120 @@ from core.trading_calendar import get_calendar
 
 logger = logging.getLogger(__name__)
 
+
+# ==================
+# Types & Constants
+# ==================
+
+class NavData(TypedDict, total=False):
+    """基金净值数据模型（最小字段集）"""
+    nav: str
+    nav_date: str
+
+DATE_FMT = "%Y-%m-%d"
+
+
+# ==================
+# Repositories（状态/数据源）
+# ==================
+
+class TransactionsRepository:
+    """交易记录仓储：负责 CSV 的读取/写回"""
+    
+    def __init__(self, transactions_file: Path):
+        self.transactions_file = transactions_file
+    
+    def load_pending(self, today: date) -> List[Dict[str, str]]:
+        """读取待确认交易（预计确认日 <= today）"""
+        if not self.transactions_file.exists():
+            return []
+        
+        pending: List[Dict[str, str]] = []
+        with open(self.transactions_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                status = row.get("status", "")
+                expected_confirm_str = row.get("expected_confirm_date", "")
+                if status == "pending" and expected_confirm_str:
+                    try:
+                        expected_date = datetime.strptime(expected_confirm_str, DATE_FMT).date()
+                        if expected_date <= today:
+                            pending.append(row)
+                    except:
+                        pass
+        return pending
+    
+    def update_confirmation(self, tx_id: str, nav: str, nav_date: str, shares: str) -> bool:
+        """根据 tx_id 更新确认字段并写回 CSV"""
+        rows: List[Dict[str, str]] = []
+        updated = False
+        
+        with open(self.transactions_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+            for row in reader:
+                if row.get("tx_id") == tx_id:
+                    row["status"] = "confirmed"
+                    row["confirm_date"] = nav_date
+                    row["nav_kind"] = "净"
+                    if shares:
+                        row["shares"] = shares
+                    updated = True
+                rows.append(row)
+        
+        if not updated:
+            return False
+        
+        with open(self.transactions_file, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        
+        return True
+
+
+# ==================
+# Services（领域服务）
+# ==================
+
+class ConfirmationService:
+    """确认检查服务：判断净值是否已公布"""
+    
+    def __init__(self, fund_api):
+        self.fund_api = fund_api
+    
+    def check(self, fund_code: str, expected_nav_date: str) -> Optional[NavData]:
+        nav_data: Optional[Dict] = self.fund_api.get_latest_nav(fund_code)
+        if not nav_data:
+            return None
+        if nav_data.get("nav_date") >= expected_nav_date:
+            return nav_data  # type: ignore[return-value]
+        return None
+
+
+class NotificationService:
+    """通知服务：负责组装文案并发送到 Discord"""
+    
+    def __init__(self, webhook_url_getter: Callable[[], str] = get_webhook_url):
+        self.webhook_url_getter = webhook_url_getter
+    
+    def send_confirmation_summary(self, confirmed_count: int, notifications: List[str]) -> None:
+        if not notifications:
+            return
+        webhook_url = self.webhook_url_getter()
+        message = (
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"💰 份额确认通知 ({confirmed_count}笔)\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n" +
+            "\n\n".join(notifications) +
+            "\n\n━━━━━━━━━━━━━━━━━━━━"
+        )
+        DiscordWebhookClient(webhook_url).send(message)
+
+
+# ==================
+# Facade（编排层）
+# ==================
 
 class ConfirmationPoller:
     """确认轮询器"""
@@ -29,119 +143,39 @@ class ConfirmationPoller:
         self.data_dir = Path(data_dir)
         self.transactions_file = self.data_dir / "transactions.csv"
         
+        # 依赖
         self.fund_api = get_fund_api()
         self.calendar = get_calendar()
+        
+        # 组装仓储与服务
+        self.tx_repo = TransactionsRepository(self.transactions_file)
+        self.confirm_service = ConfirmationService(self.fund_api)
+        self.notifier = NotificationService()
     
     def load_pending_transactions(self) -> List[Dict[str, str]]:
-        """加载待确认的交易"""
-        if not self.transactions_file.exists():
-            return []
-        
-        pending = []
+        """加载待确认的交易（委托 TransactionsRepository）"""
         today = date.today()
-        
-        try:
-            with open(self.transactions_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    status = row.get("status", "")
-                    expected_confirm_str = row.get("expected_confirm_date", "")
-                    
-                    # 只处理 pending 状态且预计确认日 <= 今天的记录
-                    if status == "pending" and expected_confirm_str:
-                        try:
-                            expected_date = datetime.strptime(expected_confirm_str, "%Y-%m-%d").date()
-                            if expected_date <= today:
-                                pending.append(row)
-                        except:
-                            pass
-            
-            logger.info(f"找到 {len(pending)} 条待确认交易")
-            return pending
-        
-        except Exception as e:
-            logger.error(f"加载待确认交易失败: {e}")
-            return []
+        pending = self.tx_repo.load_pending(today)
+        logger.info(f"找到 {len(pending)} 条待确认交易")
+        return pending
     
     def check_confirmation(self, fund_code: str, expected_nav_date: str) -> Optional[Dict]:
-        """
-        检查净值是否已公布
-        
-        Args:
-            fund_code: 基金代码
-            expected_nav_date: 预计净值日
-        
-        Returns:
-            净值数据或 None
-        """
-        try:
-            nav_data = self.fund_api.get_latest_nav(fund_code)
-            
-            if not nav_data:
-                return None
-            
-            # 检查净值日期是否匹配
-            if nav_data.get("nav_date") >= expected_nav_date:
-                logger.info(f"{fund_code} 净值已公布: {nav_data['nav']} ({nav_data['nav_date']})")
-                return nav_data
-            
-            logger.debug(f"{fund_code} 净值尚未更新: {nav_data.get('nav_date')} < {expected_nav_date}")
-            return None
-        
-        except Exception as e:
-            logger.error(f"检查 {fund_code} 确认失败: {e}")
-            return None
+        """检查净值是否已公布（委托 ConfirmationService）"""
+        nav_data = self.confirm_service.check(fund_code, expected_nav_date)
+        if nav_data:
+            logger.info(f"{fund_code} 净值已公布: {nav_data['nav']} ({nav_data['nav_date']})")
+        else:
+            logger.debug(f"{fund_code} 净值尚未更新或无数据")
+        return nav_data
     
     def update_confirmation(self, tx_id: str, nav: str, nav_date: str, shares: str) -> bool:
-        """
-        更新交易确认信息
-        
-        Args:
-            tx_id: 交易ID
-            nav: 净值
-            nav_date: 净值日期
-            shares: 确认份额
-        
-        Returns:
-            是否更新成功
-        """
-        try:
-            # 读取所有交易
-            rows = []
-            updated = False
-            
-            with open(self.transactions_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                fieldnames = reader.fieldnames
-                
-                for row in reader:
-                    if row.get("tx_id") == tx_id:
-                        row["status"] = "confirmed"
-                        row["confirm_date"] = nav_date
-                        row["nav_kind"] = "净"
-                        if shares:
-                            row["shares"] = shares
-                        updated = True
-                        logger.info(f"更新交易 {tx_id}: 确认日={nav_date}, 份额={shares}")
-                    
-                    rows.append(row)
-            
-            if not updated:
-                logger.warning(f"未找到交易 {tx_id}")
-                return False
-            
-            # 写回文件
-            with open(self.transactions_file, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(rows)
-            
-            logger.info(f"交易确认已更新: {tx_id}")
-            return True
-        
-        except Exception as e:
-            logger.error(f"更新确认失败: {e}")
-            return False
+        """更新交易确认信息（委托 TransactionsRepository）"""
+        ok = self.tx_repo.update_confirmation(tx_id, nav, nav_date, shares)
+        if ok:
+            logger.info(f"更新交易 {tx_id}: 确认日={nav_date}, 份额={shares}")
+        else:
+            logger.warning(f"未找到交易 {tx_id}")
+        return ok
     
     def poll(self) -> int:
         """
@@ -192,18 +226,10 @@ class ConfirmationPoller:
                         f"   净值: {nav_data['nav']} ({nav_data['nav_date']})"
                     )
         
-        # 发送通知
+        # 发送通知（委托 NotificationService）
         if notifications:
             try:
-                webhook_url = get_webhook_url()
-                message = (
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"💰 份额确认通知 ({confirmed_count}笔)\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n\n" +
-                    "\n\n".join(notifications) +
-                    "\n\n━━━━━━━━━━━━━━━━━━━━"
-                )
-                DiscordWebhookClient(webhook_url).send(message)
+                self.notifier.send_confirmation_summary(confirmed_count, notifications)
                 logger.info(f"已发送确认通知：{confirmed_count} 笔")
             except Exception as e:
                 logger.error(f"发送确认通知失败: {e}")
