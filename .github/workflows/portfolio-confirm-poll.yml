@@ -33,7 +33,7 @@ jobs:
 
       - name: Run confirmation poller
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL_PORTFOLIO }}
           TIMEZONE: Asia/Shanghai
           LOG_LEVEL: INFO
         run: |

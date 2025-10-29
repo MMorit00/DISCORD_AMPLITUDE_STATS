@@ -28,7 +28,7 @@ jobs:
         env:
           AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
           AMPLITUDE_SECRET_KEY: ${{ secrets.AMPLITUDE_SECRET_KEY }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL_AMPLITUDE }}
           AMPLITUDE_TIMEZONE: Asia/Shanghai
           AMPLITUDE_BASE_URL: ${{ secrets.AMPLITUDE_BASE_URL }}
           # 默认使用 SCHEDULED 模式（查询上周数据）
