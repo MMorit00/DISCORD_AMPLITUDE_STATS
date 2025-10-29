@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 from pathlib import Path
 
 from utils.config_loader import ConfigLoader
-from utils.discord import post_to_discord, get_webhook_url
+from utils.discord_webhook import DiscordWebhookClient, get_webhook_url
 from sources.eastmoney import get_fund_api
 from core.trading_calendar import get_calendar
 
@@ -203,7 +203,7 @@ class ConfirmationPoller:
                     "\n\n".join(notifications) +
                     "\n\n━━━━━━━━━━━━━━━━━━━━"
                 )
-                post_to_discord(webhook_url, message)
+                DiscordWebhookClient(webhook_url).send(message)
                 logger.info(f"已发送确认通知：{confirmed_count} 笔")
             except Exception as e:
                 logger.error(f"发送确认通知失败: {e}")

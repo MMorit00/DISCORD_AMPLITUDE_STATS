@@ -367,7 +367,7 @@ tx001,2025-10-20,000051,6800,3850.17,buy,confirmed
 | 数据抓取 | ✅ | sources/eastmoney.py | 376 |
 | 持仓管理 | ✅ | core/portfolio.py | 361 |
 | 配置加载 | ✅ | utils/config_loader.py | 93 |
-| Discord 推送 | ✅ | utils/discord.py | 69 |
+| Discord 推送 | ✅ | utils/discord_webhook.py | 69 |
 | 测试文件 | ✅ | core/test_*.py | ~330 |
 
 **验证：** 所有测试通过 ✅

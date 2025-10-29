@@ -19,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.config_loader import ConfigLoader
-from utils.discord import post_to_discord, get_webhook_url
+from utils.discord_webhook import DiscordWebhookClient, get_webhook_url
 from core.portfolio import Portfolio
 from core.signals import SignalEngine
 from core.trading_calendar import get_calendar
@@ -141,7 +141,7 @@ def main():
         
         # 发送到 Discord
         webhook_url = get_webhook_url()
-        post_to_discord(webhook_url, report)
+        DiscordWebhookClient(webhook_url).send(report)
         
         logger.info(f"{args.freq} 报告发送成功")
     
@@ -152,7 +152,7 @@ def main():
         # 尝试发送错误通知
         try:
             webhook_url = get_webhook_url()
-            post_to_discord(webhook_url, error_msg)
+            DiscordWebhookClient(webhook_url).send(error_msg)
         except:
             pass
         

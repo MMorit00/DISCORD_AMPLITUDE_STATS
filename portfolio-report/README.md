@@ -133,7 +133,7 @@ uv run python portfolio-report/core/test_portfolio.py
 - ✅ LLM 路由配置（Qwen/GLM/豆包）
 - ✅ 信号时间配置（07:30/14:40/15:00）
 
-### 5. Discord 推送（`utils/discord.py`）
+### 5. Discord 推送（`utils/discord_webhook.py`）
 - ✅ Webhook 消息发送
 - ✅ Embed 美化支持
 - ✅ 复用 amplitude-report 逻辑
@@ -300,7 +300,7 @@ print(f'总市值: ¥{p.total_value_net:.2f}')
 | 持仓管理 | `core/portfolio.py` | 361 | ✅ | ✅ |
 | 数据抓取 | `sources/eastmoney.py` | 376 | ✅ | ✅ |
 | 配置加载 | `utils/config_loader.py` | 93 | ✅ | ✅ |
-| Discord推送 | `utils/discord.py` | 69 | ✅ | - |
+| Discord推送 | `utils/discord_webhook.py` | 69 | ✅ | - |
 
 **代码统计：** ~1,239 行核心代码 + ~330 行测试代码
 
