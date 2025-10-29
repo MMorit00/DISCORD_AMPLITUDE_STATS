@@ -1,0 +1,73 @@
+{
+  "generated_at": "2025-10-28T17:47:14.520078",
+  "total_value_net": 8144.31071,
+  "total_value_est": 0.0,
+  "weights_net": {
+    "CSI300": 0.8341559165539253,
+    "CGB_3_5Y": 0.05567178318028586,
+    "US_QDII": 0.11017230026578885
+  },
+  "weights_est": {},
+  "positions": {
+    "000051": {
+      "fund_code": "000051",
+      "shares": 3850.17,
+      "asset_class": "CSI300",
+      "fund_type": "domestic",
+      "nav": 1.7645,
+      "nav_date": "2025-10-27",
+      "estimate_value": null,
+      "estimate_time": null,
+      "market_value_net": 6793.624965,
+      "market_value_est": 0.0
+    },
+    "001512": {
+      "fund_code": "001512",
+      "shares": 331.56,
+      "asset_class": "CGB_3_5Y",
+      "fund_type": "domestic",
+      "nav": 1.3675,
+      "nav_date": "2025-10-27",
+      "estimate_value": null,
+      "estimate_time": null,
+      "market_value_net": 453.4083,
+      "market_value_est": 0.0
+    },
+    "018043": {
+      "fund_code": "018043",
+      "shares": 162.62,
+      "asset_class": "US_QDII",
+      "fund_type": "QDII",
+      "nav": 1.8424,
+      "nav_date": "2025-10-24",
+      "estimate_value": null,
+      "estimate_time": null,
+      "market_value_net": 299.611088,
+      "market_value_est": 0.0
+    },
+    "018044": {
+      "fund_code": "018044",
+      "shares": 162.71,
+      "asset_class": "US_QDII",
+      "fund_type": "QDII",
+      "nav": 1.8299,
+      "nav_date": "2025-10-24",
+      "estimate_value": null,
+      "estimate_time": null,
+      "market_value_net": 297.743029,
+      "market_value_est": 0.0
+    },
+    "019305": {
+      "fund_code": "019305",
+      "shares": 192.16,
+      "asset_class": "US_QDII",
+      "fund_type": "QDII",
+      "nav": 1.5608,
+      "nav_date": "2025-10-24",
+      "estimate_value": null,
+      "estimate_time": null,
+      "market_value_net": 299.923328,
+      "market_value_est": 0.0
+    }
+  }
+}

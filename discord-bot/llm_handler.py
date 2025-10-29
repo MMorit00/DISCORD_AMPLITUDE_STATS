@@ -18,38 +18,38 @@ class LLMHandler:
         self.primary_client = None
         self.fallback_clients = []
         
-        # 尝试初始化 Qwen（优先，新加坡端点）
-        if os.getenv("DASHSCOPE_API_KEY"):
+        # 豆包 Doubao（主 LLM）
+        if os.getenv("ARK_API_KEY"):
             try:
                 self.primary_client = openai.OpenAI(
-                    api_key=os.getenv("DASHSCOPE_API_KEY"),
-                    base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+                    api_key=os.getenv("ARK_API_KEY"),
+                    base_url="https://ark.cn-beijing.volces.com/api/v3"
                 )
-                self.primary_model = "qwen-turbo"
-                logger.info("主 LLM: Qwen-Turbo (新加坡端点)")
+                self.primary_model = os.getenv("ARK_MODEL_ID", "ep-20241028xxxxx-xxxxx")  # 需要填入你的 endpoint ID
+                logger.info(f"主 LLM: 豆包 {self.primary_model}")
             except Exception as e:
-                logger.warning(f"Qwen 初始化失败: {e}")
+                logger.warning(f"豆包初始化失败: {e}")
         
-        # 兜底：GLM
-        if os.getenv("ZHIPU_API_KEY"):
-            try:
-                client = openai.OpenAI(
-                    api_key=os.getenv("ZHIPU_API_KEY"),
-                    base_url="https://open.bigmodel.cn/api/paas/v4/"
-                )
-                self.fallback_clients.append(("glm-4-flash", client))
-                logger.info("兜底 LLM: GLM-4-Flash")
-            except Exception as e:
-                logger.warning(f"GLM 初始化失败: {e}")
+        # TODO: 添加兜底 LLM
+        # if os.getenv("DASHSCOPE_API_KEY"):
+        #     client = openai.OpenAI(
+        #         api_key=os.getenv("DASHSCOPE_API_KEY"),
+        #         base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+        #     )
+        #     self.fallback_clients.append(("qwen-turbo", client))
         
-        # 兜底：OpenAI
-        if os.getenv("OPENAI_API_KEY"):
-            try:
-                client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                self.fallback_clients.append(("gpt-4o-mini", client))
-                logger.info("兜底 LLM: GPT-4o-mini")
-            except Exception as e:
-                logger.warning(f"OpenAI 初始化失败: {e}")
+        # TODO: GLM 兜底
+        # if os.getenv("ZHIPU_API_KEY"):
+        #     client = openai.OpenAI(
+        #         api_key=os.getenv("ZHIPU_API_KEY"),
+        #         base_url="https://open.bigmodel.cn/api/paas/v4/"
+        #     )
+        #     self.fallback_clients.append(("glm-4-flash", client))
+        
+        # TODO: OpenAI 兜底
+        # if os.getenv("OPENAI_API_KEY"):
+        #     client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        #     self.fallback_clients.append(("gpt-4o-mini", client))
         
         if not self.primary_client and not self.fallback_clients:
             raise ValueError("未配置任何 LLM API Key")

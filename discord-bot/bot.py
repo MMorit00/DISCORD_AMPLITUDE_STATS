@@ -8,6 +8,7 @@ import logging
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands
+import aiohttp
 
 from llm_handler import get_llm_handler
 from github_sync import GitHubSync
@@ -15,6 +16,12 @@ from functions import TOOLS, FunctionExecutor
 
 # 加载环境变量
 load_dotenv()
+
+# 配置代理（如果环境变量中有）
+PROXY = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+if PROXY:
+    logger = logging.getLogger(__name__)
+    logger.info(f"使用代理: {PROXY}")
 
 # 日志配置
 logging.basicConfig(
@@ -45,7 +52,9 @@ if not ALLOWED_USER_IDS:
 # 创建 Bot 实例
 intents = discord.Intents.default()
 intents.message_content = True  # 需要 Message Content Intent
-bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Bot 实例（代理通过环境变量传递，discord.py 会自动使用）
+bot = commands.Bot(command_prefix="!", intents=intents, proxy=PROXY if PROXY else None)
 
 
 # 初始化组件
@@ -133,9 +142,9 @@ async def status_command(ctx):
         await ctx.reply(f"❌ 查询失败: {str(e)}")
 
 
-@bot.command(name="help")
-async def help_command(ctx):
-    """帮助信息"""
+@bot.command(name="guide")
+async def guide_command(ctx):
+    """使用指南"""
     help_text = """
 📋 **Portfolio Bot 使用指南**
 
@@ -148,7 +157,7 @@ async def help_command(ctx):
 
 **命令模式：**
 • `!status` - 查询持仓
-• `!help` - 帮助信息
+• `!guide` - 使用指南
 
 **支持的操作：**
 ✅ 跳过定投

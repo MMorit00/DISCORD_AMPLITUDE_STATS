@@ -1,21 +1,23 @@
 .venv/
 __pycache__/
 *.log
-.env 
 
 # macOS
 .DS_Store
+
+# uv lock files
+uv.lock
 
 # Portfolio Report
 portfolio-report/data/*.csv
 !portfolio-report/data/transactions.csv      # 交易台账需要提交到 Git
 !portfolio-report/data/transactions_sample.csv  # 样例数据
-portfolio-report/data/*.json
+portfolio-report/data/*.json         # 信号状态需要提交（冷却追踪）
 !portfolio-report/data/.gitkeep
 portfolio-report/data/cache/                 # 缓存目录完全排除
 portfolio-report/**/__pycache__/
 portfolio-report/**/*.pyc
-
+.env
 # Discord Bot
 discord-bot/**/__pycache__/
 discord-bot/**/*.pyc

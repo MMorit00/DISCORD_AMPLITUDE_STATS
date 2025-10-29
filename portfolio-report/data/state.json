@@ -1,0 +1,12 @@
+{
+  "last_signals": {},
+  "signal_history": [],
+  "last_rebalance": null,
+  "cooldown_tracker": {
+    "US_QDII_rebalance_strong": {
+      "triggered_at": "2025-10-28",
+      "cooldown_until": "2026-01-26",
+      "days": 90
+    }
+  }
+}
