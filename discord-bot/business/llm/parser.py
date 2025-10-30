@@ -6,8 +6,8 @@ LLM 解析器
 import logging
 from typing import List, Union
 
-from infrastructure import LLMClient
-from shared import ToolSpec, ToolCall, TextReply
+from infrastructure.llm.clients import LLMClient
+from shared.types import ToolSpec, ToolCall, TextReply
 
 logger = logging.getLogger(__name__)
 

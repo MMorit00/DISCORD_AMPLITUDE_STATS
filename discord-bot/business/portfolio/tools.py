@@ -3,7 +3,7 @@ Portfolio 工具定义
 职责：定义投资组合相关的 LLM 工具规范
 依赖：shared.ToolSpec
 """
-from shared import ToolSpec
+from shared.types import ToolSpec
 
 
 # ==================== 工具定义 ====================

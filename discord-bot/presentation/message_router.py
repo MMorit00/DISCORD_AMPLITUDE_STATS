@@ -6,9 +6,11 @@
 import logging
 from typing import Dict, Callable, Any
 
-from business import LLMParser, PortfolioUseCases, portfolio_tools
-from shared import ToolCall, TextReply
-from presentation.formatters import (
+from business.llm.parser import LLMParser
+from business.portfolio.usecases import PortfolioUseCases
+from business.portfolio.tools import all_tools as portfolio_tools
+from shared.types import ToolCall, TextReply
+from presentation.formatters.portfolio_formatter import (
     format_skip_investment,
     format_update_position,
     format_confirm_shares,

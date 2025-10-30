@@ -7,8 +7,9 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from infrastructure import GitHubRepository
-from shared import Result, HoldingsSnapshot, parse_date, parse_datetime
+from infrastructure.github.repository import GitHubRepository
+from shared.types import Result, HoldingsSnapshot
+from shared.utils import parse_date, parse_datetime
 
 logger = logging.getLogger(__name__)
 

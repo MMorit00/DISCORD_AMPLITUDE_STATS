@@ -7,7 +7,7 @@ import logging
 import discord
 from discord.ext import commands
 
-from config import Settings
+from config.settings import Settings
 from presentation.message_router import MessageRouter
 
 logger = logging.getLogger(__name__)

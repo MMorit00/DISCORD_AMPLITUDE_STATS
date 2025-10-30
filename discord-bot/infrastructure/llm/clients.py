@@ -7,7 +7,7 @@ import logging
 from typing import List, Dict, Any, Optional, Union
 import openai
 
-from config import Settings
+from config.settings import Settings
 
 logger = logging.getLogger(__name__)
 

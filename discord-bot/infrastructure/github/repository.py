@@ -11,8 +11,9 @@ from typing import Optional, Dict, Any
 
 from github import Github, GithubException
 
-from shared import Result, Transaction, HoldingsSnapshot, generate_short_id
-from config import Settings
+from shared.types import Result, Transaction, HoldingsSnapshot
+from shared.utils import generate_short_id
+from config.settings import Settings
 
 logger = logging.getLogger(__name__)
 

@@ -6,10 +6,13 @@ import os
 import sys
 import logging
 
-from config import get_settings
-from infrastructure import GitHubRepository, LLMClient
-from business import LLMParser, PortfolioUseCases
-from presentation import MessageRouter, DiscordBotAdapter
+from config.settings import get_settings
+from infrastructure.github.repository import GitHubRepository
+from infrastructure.llm.clients import LLMClient
+from business.llm.parser import LLMParser
+from business.portfolio.usecases import PortfolioUseCases
+from presentation.message_router import MessageRouter
+from presentation.discord.bot_adapter import DiscordBotAdapter
 
 
 def setup_logging(log_level: str):

@@ -3,7 +3,8 @@ Portfolio 输出格式化
 职责：将业务结果格式化为 Discord 消息文本
 依赖：shared.types, shared.utils
 """
-from shared import Result, HoldingsSnapshot, format_amount, format_percentage
+from shared.types import Result, HoldingsSnapshot
+from shared.utils import format_amount, format_percentage
 
 
 # ==================== 格式化函数 ====================
