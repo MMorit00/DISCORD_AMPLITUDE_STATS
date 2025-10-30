@@ -13,7 +13,12 @@ dependencies = [
     "pyyaml>=6.0",
     "numpy-financial>=1.0.0",
     "chinesecalendar>=1.9.0",
+    "PyGithub>=2.1.0",
 ]
+
+[project.scripts]
+portfolio-report = "portfolio_report.main:main"
+discord-bot = "discord_bot.main:main"
 
 [project.optional-dependencies]
 # Discord Bot 依赖
@@ -36,7 +41,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["portfolio-report", "discord-bot"]
+packages = ["src"]
 
 [dependency-groups]
 dev = [
@@ -57,7 +62,7 @@ line-length = 100
 target-version = ["py311"]
 
 [tool.pytest.ini_options]
-testpaths = ["portfolio-report/core", "portfolio-report/tests"]
+testpaths = ["src/portfolio_report/core", "tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
