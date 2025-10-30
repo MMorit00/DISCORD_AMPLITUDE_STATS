@@ -3,17 +3,25 @@ skinparam backgroundColor white
 skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
 skinparam linetype ortho
 
-title Discord Bot - 架构图 (v0.1)
+title Discord Bot - 分层架构图 (v2.0 重构版)
 
 ' 样式定义
+skinparam package {
+  BackgroundColor<<presentation>> #E1BEE7
+  BorderColor<<presentation>> #9C27B0
+  BackgroundColor<<business>> #FFE0B2
+  BorderColor<<business>> #FF9800
+  BackgroundColor<<infrastructure>> #C8E6C9
+  BorderColor<<infrastructure>> #4CAF50
+  BackgroundColor<<config>> #FFCDD2
+  BorderColor<<config>> #F44336
+  BackgroundColor<<shared>> #B2DFDB
+  BorderColor<<shared>> #00897B
+  FontSize 12
+}
+
 skinparam component {
-  BackgroundColor<<bot>> #E1BEE7
-  BorderColor<<bot>> #9C27B0
-  BackgroundColor<<llm>> #FFE0B2
-  BorderColor<<llm>> #FF9800
-  BackgroundColor<<sync>> #C8E6C9
-  BorderColor<<sync>> #4CAF50
-  FontSize 14
+  FontSize 11
 }
 
 skinparam database {
@@ -27,83 +35,154 @@ skinparam cloud {
 }
 
 ' ============================================================
-' 核心模块
+' 主入口
 ' ============================================================
 
-[Bot\n主程序] as Bot <<bot>>
-[LLMHandler\n函数调用] as LLM <<llm>>
-[FunctionExecutor\n工具执行] as Executor <<bot>>
-[GitHubSync\n幂等写入] as GitHubSync <<sync>>
+component "main.py\n【启动入口】" as Main #FFF3E0
 
 ' ============================================================
-' 数据与服务
+' 配置层
 ' ============================================================
+
+package "config\n【配置层】" <<config>> {
+  component "settings.py\n环境变量" as Settings
+}
+
+' ============================================================
+' 共享层
+' ============================================================
+
+package "shared\n【共享层】" <<shared>> {
+  component "types.py\n数据类型" as Types
+  component "utils.py\n工具函数" as Utils
+}
+
+' ============================================================
+' 表现层
+' ============================================================
+
+package "presentation\n【表现层】" <<presentation>> {
+  component "DiscordBotAdapter\nDiscord 事件" as BotAdapter
+  component "MessageRouter\n消息路由" as Router
+  component "portfolio_formatter\n输出格式化" as Formatter
+}
+
+' ============================================================
+' 业务层
+' ============================================================
+
+package "business\n【业务层】" <<business>> {
+  component "LLMParser\n自然语言解析" as Parser
+  
+  package "portfolio" {
+    component "tools.py\n工具定义" as Tools
+    component "usecases.py\n用例实现" as UseCases
+  }
+}
+
+' ============================================================
+' 基础设施层
+' ============================================================
+
+package "infrastructure\n【基础设施层】" <<infrastructure>> {
+  component "LLMClient\n豆包客户端" as LLMClient
+  component "GitHubRepository\n数据仓储" as Repository
+}
+
+' ============================================================
+' 外部服务
+' ============================================================
+
+cloud "Discord\nGateway" as Discord
+cloud "豆包 LLM\n(Doubao)" as Doubao
+cloud "GitHub API" as GitHubAPI
 
 database "transactions.csv" as TxDB
 database "holdings.json" as HoldingsDB
 
-cloud "Discord\nGateway" as Discord
-cloud "Qwen\n(新加坡)" as Qwen
-cloud "GLM/OpenAI\n(兜底)" as Fallback
-cloud "GitHub API" as GitHubAPI
-
 ' ============================================================
-' 关系
+' 依赖关系（单向依赖）
 ' ============================================================
 
-Bot --> Discord : 监听消息
-Bot --> LLM : 解析
-Bot --> Executor : 执行
+Main --> Settings : 加载
+Main --> BotAdapter : 启动
+Main ..> Router : 注入
+Main ..> Parser : 注入
+Main ..> UseCases : 注入
+Main ..> Repository : 注入
+Main ..> LLMClient : 注入
 
-LLM --> Qwen : 主LLM
-LLM --> Fallback : 降级
+' 表现层
+BotAdapter --> Discord : 监听
+BotAdapter --> Router : 路由
+Router --> Parser : 解析
+Router --> UseCases : 执行
+Router --> Formatter : 格式化
 
-Executor --> GitHubSync : 调用
+' 业务层
+Parser --> LLMClient : 调用
+Parser --> Tools : 使用
+UseCases --> Repository : 调用
 
-GitHubSync --> GitHubAPI : 读写
+' 基础设施层
+LLMClient --> Doubao : API 调用
+Repository --> GitHubAPI : 读写
+
+' 数据
 GitHubAPI --> TxDB : 修改
 GitHubAPI --> HoldingsDB : 读取
 
 ' ============================================================
-' 流程
+' 流程说明
 ' ============================================================
 
 note as Flow
-  <b>交互流程</b>
-  ━━━━━━━━━━
-  1. 用户发消息
-  2. LLM 解析
-  3. 执行函数
-  4. GitHub 写入
-  5. 回复确认
+  <b>消息处理流程</b>
+  ━━━━━━━━━━━━━━
+  1. Discord → BotAdapter（接收消息）
+  2. BotAdapter → Router（路由）
+  3. Router → Parser（解析）
+  4. Parser → LLMClient（调用豆包）
+  5. Router → UseCases（执行用例）
+  6. UseCases → Repository（操作数据）
+  7. Repository → GitHub（提交变更）
+  8. Router → Formatter（格式化结果）
+  9. BotAdapter → Discord（回复用户）
 end note
 
-Flow -[hidden]- Bot
+Flow -[hidden]- Main
 
 ' ============================================================
 ' 图例
 ' ============================================================
 
 legend right
-  |= 核心模块 (4个) |
-  | Bot | 179行 ✅ |
-  | LLMHandler | 181行 ✅ |
-  | Functions | 319行 ✅ |
-  | GitHubSync | 393行 ✅ |
+  |= 架构特点 |
+  | 分层清晰 | 4 层分离 ✅ |
+  | 单向依赖 | presentation → business → infrastructure ✅ |
+  | 职责单一 | 每个模块只做一件事 ✅ |
+  | 易扩展 | 新增功能只需添加工具和用例 ✅ |
+  | 易替换 | 基础设施可平滑替换 ✅ |
   
   |= 工具函数 (5个) |
-  | skip_investment | ✅ |
-  | update_position | ✅ |
-  | confirm_shares | ✅ |
-  | query_status | ✅ |
-  | delete_transaction | ✅ |
+  | skip_investment | 跳过定投 ✅ |
+  | update_position | 调整持仓 ✅ |
+  | confirm_shares | 确认份额 ✅ |
+  | query_status | 查询状态 ✅ |
+  | delete_transaction | 删除交易 ✅ |
   
-  |= 特性 |
-  | 自然语言 | ✅ |
-  | 幂等写入 | ✅ |
-  | LLM降级 | ✅ |
-  | 权限控制 | ✅ |
+  |= LLM |
+  | 豆包 Doubao | 唯一 LLM（精简） ✅ |
+  | 系统 Prompt | 注入领域上下文 ✅ |
+  
+  |= 代码统计 |
+  | 总文件数 | 29 个 |
+  | 配置层 | 2 个 |
+  | 共享层 | 3 个 |
+  | 基础设施层 | 4 个 |
+  | 业务层 | 6 个 |
+  | 表现层 | 7 个 |
+  | 主入口 | 1 个 |
 endlegend
 
 @enduml
-
