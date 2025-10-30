@@ -161,14 +161,3 @@ class MetricsCalculator:
         )
 
 
-# 全局实例
-_metrics_instance: Optional[MetricsCalculator] = None
-
-
-def get_metrics() -> MetricsCalculator:
-    """获取指标计算器实例（单例模式）"""
-    global _metrics_instance
-    if _metrics_instance is None:
-        _metrics_instance = MetricsCalculator()
-    return _metrics_instance
-

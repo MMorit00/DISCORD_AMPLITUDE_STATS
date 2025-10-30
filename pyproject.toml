@@ -9,6 +9,7 @@ dependencies = [
     "python-dateutil>=2.9.0",
     
     # Portfolio Report (新项目)
+    "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
     "numpy-financial>=1.0.0",
     "chinesecalendar>=1.9.0",

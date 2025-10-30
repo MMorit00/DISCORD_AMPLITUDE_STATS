@@ -53,6 +53,8 @@ from typing import Optional, Tuple, TypedDict, Literal
 from dateutil import tz
 import chinese_calendar as cc
 
+from config.constants import FundType
+
 logger = logging.getLogger(__name__)
 
 
@@ -204,19 +206,19 @@ class ConfirmAlignmentPolicy:
         """计算预计净值日和确认日"""
         trade_dt = datetime.combine(trade_day_cn, time(9, 0))
 
-        if fund_type == "domestic":
+        if fund_type == FundType.domestic:
             expected_nav_date = trade_day_cn
             expected_confirm_date = self.cn_calendar.next_trading_day(
                 trade_dt + timedelta(days=1)
             ).date()
-        elif fund_type == "QDII":
+        elif fund_type == FundType.qdii:
             expected_nav_date = self.cn_calendar.next_trading_day(
                 trade_dt + timedelta(days=1)
             ).date()
             confirm_dt = trade_dt + timedelta(days=2)
             expected_confirm_date = self._align_qdii_confirm_date(confirm_dt).date()
         else:
-            logger.warning(f"未知基金类型：{fund_type}，使用 domestic 规则")
+            logger.warning(f"未知基金类型：{fund_type}，使用 {FundType.domestic} 规则")
             expected_nav_date = trade_day_cn
             expected_confirm_date = self.cn_calendar.next_trading_day(
                 trade_dt + timedelta(days=1)
@@ -311,16 +313,4 @@ class TradingCalendar:
             return f"{date_str} (估)"
         else:
             return date_str
-
-
-# 全局实例（可选，方便调用）
-_calendar_instance: Optional[TradingCalendar] = None
-
-
-def get_calendar(timezone_str: str = "Asia/Shanghai") -> TradingCalendar:
-    """获取交易日历实例（单例模式）"""
-    global _calendar_instance
-    if _calendar_instance is None:
-        _calendar_instance = TradingCalendar(timezone_str)
-    return _calendar_instance
 

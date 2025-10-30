@@ -21,4 +21,3 @@ portfolio-report/**/*.pyc
 discord-bot/**/__pycache__/
 discord-bot/**/*.pyc
 discord-bot/.env
-

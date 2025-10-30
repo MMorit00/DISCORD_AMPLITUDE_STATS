@@ -1,0 +1,11 @@
+{
+  "fund_code": "001512",
+  "name": "易方达中债3-5年期国债指数",
+  "estimate_value": "1.3715",
+  "estimate_time": "2025-10-30 11:30",
+  "last_nav": "1.3708",
+  "last_nav_date": "2025-10-29",
+  "change_percent": "0.0522",
+  "nav_kind": "估",
+  "fetched_at": "2025-10-30T11:36:32.776444+08:00"
+}

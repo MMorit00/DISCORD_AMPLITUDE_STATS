@@ -44,7 +44,7 @@ class ConfigLoader:
         env_path = os.getenv("PORTFOLIO_CONFIG")
         if env_path:
             return Path(env_path)
-        base_dir = Path(__file__).parent.parent
+        base_dir = Path(__file__).parent.parent.parent
         return base_dir / "config" / "config.yaml"
 
     def _read_text(self, path: Path) -> str:

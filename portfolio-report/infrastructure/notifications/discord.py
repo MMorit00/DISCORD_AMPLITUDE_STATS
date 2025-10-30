@@ -104,12 +104,3 @@ class DiscordWebhookClient:
                 logger.error(f"状态码：{e.response.status_code}，响应：{e.response.text}")
             raise
 
-
-def get_webhook_url() -> str:
-    """从环境变量获取 Discord Webhook URL（便捷函数）"""
-    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-    if not webhook_url:
-        raise ValueError("缺少环境变量：DISCORD_WEBHOOK_URL")
-    return webhook_url
-
-

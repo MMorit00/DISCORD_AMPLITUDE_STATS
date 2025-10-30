@@ -8,10 +8,9 @@ from datetime import datetime, date
 from typing import List, Dict, Optional, TypedDict, Callable
 from pathlib import Path
 
-from utils.config_loader import ConfigLoader
-from utils.discord_webhook import DiscordWebhookClient, get_webhook_url
-from sources.eastmoney import get_fund_api
-from core.trading_calendar import get_calendar
+from infrastructure.config.config_loader import ConfigLoader
+from infrastructure.notifications.discord import DiscordWebhookClient
+from config.constants import TransactionStatus, NavKind, Defaults, TransactionFields
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +23,6 @@ class NavData(TypedDict, total=False):
     """基金净值数据模型（最小字段集）"""
     nav: str
     nav_date: str
-
-DATE_FMT = "%Y-%m-%d"
 
 
 # ==================
@@ -47,11 +44,11 @@ class TransactionsRepository:
         with open(self.transactions_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                status = row.get("status", "")
-                expected_confirm_str = row.get("expected_confirm_date", "")
-                if status == "pending" and expected_confirm_str:
+                status = row.get(TransactionFields.status, "")
+                expected_confirm_str = row.get(TransactionFields.expected_confirm_date, "")
+                if status == TransactionStatus.pending and expected_confirm_str:
                     try:
-                        expected_date = datetime.strptime(expected_confirm_str, DATE_FMT).date()
+                        expected_date = datetime.strptime(expected_confirm_str, Defaults.date_format).date()
                         if expected_date <= today:
                             pending.append(row)
                     except:
@@ -67,12 +64,12 @@ class TransactionsRepository:
             reader = csv.DictReader(f)
             fieldnames = reader.fieldnames
             for row in reader:
-                if row.get("tx_id") == tx_id:
-                    row["status"] = "confirmed"
-                    row["confirm_date"] = nav_date
-                    row["nav_kind"] = "净"
+                if row.get(TransactionFields.tx_id) == tx_id:
+                    row[TransactionFields.status] = TransactionStatus.confirmed
+                    row[TransactionFields.confirm_date] = nav_date
+                    row[TransactionFields.nav_kind] = NavKind.net
                     if shares:
-                        row["shares"] = shares
+                        row[TransactionFields.shares] = shares
                     updated = True
                 rows.append(row)
         
@@ -109,13 +106,12 @@ class ConfirmationService:
 class NotificationService:
     """通知服务：负责组装文案并发送到 Discord"""
     
-    def __init__(self, webhook_url_getter: Callable[[], str] = get_webhook_url):
-        self.webhook_url_getter = webhook_url_getter
+    def __init__(self, webhook_url: str):
+        self.webhook_url = webhook_url
     
     def send_confirmation_summary(self, confirmed_count: int, notifications: List[str]) -> None:
-        if not notifications:
+        if not notifications or not self.webhook_url:
             return
-        webhook_url = self.webhook_url_getter()
         message = (
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"💰 份额确认通知 ({confirmed_count}笔)\n"
@@ -123,7 +119,7 @@ class NotificationService:
             "\n\n".join(notifications) +
             "\n\n━━━━━━━━━━━━━━━━━━━━"
         )
-        DiscordWebhookClient(webhook_url).send(message)
+        DiscordWebhookClient(self.webhook_url).send(message)
 
 
 # ==================
@@ -133,7 +129,14 @@ class NotificationService:
 class ConfirmationPoller:
     """确认轮询器"""
     
-    def __init__(self, config: Optional[ConfigLoader] = None, data_dir: Optional[str] = None):
+    def __init__(
+        self,
+        fund_api,
+        calendar,
+        webhook_url: str = "",
+        config: Optional[ConfigLoader] = None, 
+        data_dir: Optional[str] = None
+    ):
         self.config = config or ConfigLoader()
         
         if data_dir is None:
@@ -143,14 +146,14 @@ class ConfirmationPoller:
         self.data_dir = Path(data_dir)
         self.transactions_file = self.data_dir / "transactions.csv"
         
-        # 依赖
-        self.fund_api = get_fund_api()
-        self.calendar = get_calendar()
+        # 依赖注入
+        self.fund_api = fund_api
+        self.calendar = calendar
         
         # 组装仓储与服务
         self.tx_repo = TransactionsRepository(self.transactions_file)
         self.confirm_service = ConfirmationService(self.fund_api)
-        self.notifier = NotificationService()
+        self.notifier = NotificationService(webhook_url)
     
     def load_pending_transactions(self) -> List[Dict[str, str]]:
         """加载待确认的交易（委托 TransactionsRepository）"""
@@ -194,17 +197,17 @@ class ConfirmationPoller:
         notifications = []
         
         for tx in pending_txs:
-            tx_id = tx.get("tx_id")
-            fund_code = tx.get("fund_code")
-            expected_nav_date = tx.get("expected_nav_date")
-            amount = tx.get("amount")
+            tx_id = tx.get(TransactionFields.tx_id)
+            fund_code = tx.get(TransactionFields.fund_code)
+            expected_nav_date = tx.get(TransactionFields.expected_nav_date)
+            amount = tx.get(TransactionFields.amount)
             
             # 检查确认
             nav_data = self.check_confirmation(fund_code, expected_nav_date)
             
             if nav_data:
                 # 计算份额（如果尚未填写）
-                shares = tx.get("shares")
+                shares = tx.get(TransactionFields.shares)
                 if not shares or shares == "0":
                     nav_value = float(nav_data['nav'])
                     shares = str(float(amount) / nav_value)
@@ -240,14 +243,35 @@ class ConfirmationPoller:
 def main():
     """主函数（供 Actions 调用）"""
     import sys
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s"
-    )
+    import os
+    from config.settings import load_settings
     
     try:
-        poller = ConfirmationPoller()
+        # 加载配置
+        settings = load_settings()
+        
+        # 配置日志
+        logging.basicConfig(
+            level=settings.log_level,
+            format="%(asctime)s %(levelname)s %(message)s"
+        )
+        
+        # 组装依赖
+        from infrastructure.config.config_loader import ConfigLoader
+        from infrastructure.market_data.eastmoney import EastMoneyFundAPI
+        from core.trading_calendar import TradingCalendar
+        
+        config = ConfigLoader(settings.config_path)
+        fund_api = EastMoneyFundAPI()
+        calendar = TradingCalendar(config.get_timezone())
+        
+        poller = ConfirmationPoller(
+            fund_api=fund_api,
+            calendar=calendar,
+            webhook_url=settings.discord_webhook_url,
+            config=config,
+            data_dir=str(settings.data_dir)
+        )
         count = poller.poll()
         
         logger.info(f"确认轮询完成，处理了 {count} 笔交易")

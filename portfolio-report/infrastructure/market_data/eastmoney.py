@@ -262,7 +262,7 @@ class EastMoneyFundAPI:
     def __init__(self, cache_dir: Optional[str] = None, cache_ttl: int = default_cache_ttl):
         """初始化 API 实例"""
         if cache_dir is None:
-            base_dir = Path(__file__).parent.parent
+            base_dir = Path(__file__).parent.parent.parent
             cache_dir = base_dir / "data" / "cache"
         
         # 组装仓储
@@ -394,17 +394,4 @@ class EastMoneyFundAPI:
         
         logger.info(f"获取历史净值成功: {fund_code}, {len(result)} 条")
         return result
-
-
-# 全局实例
-_api_instance: Optional[EastMoneyFundAPI] = None
-
-
-def get_fund_api(cache_dir: Optional[str] = None, cache_ttl: int = 300) -> EastMoneyFundAPI:
-    """获取 API 实例（单例模式）"""
-    global _api_instance
-    if _api_instance is None:
-        _api_instance = EastMoneyFundAPI(cache_dir, cache_ttl)
-    return _api_instance
-
 

@@ -10,8 +10,16 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
-from utils.config_loader import ConfigLoader
-from core.metrics import get_metrics
+from domain.models import Signal
+from infrastructure.config.config_loader import ConfigLoader
+from config.constants import (
+    SignalType as SignalTypeConst,
+    ActionType as ActionTypeConst,
+    UrgencyType as UrgencyTypeConst,
+    ThresholdKeys,
+    CooldownKeys,
+    FundType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +31,6 @@ logger = logging.getLogger(__name__)
 SignalType = Literal["rebalance_light", "rebalance_strong", "tactical_add", "tactical_reduce"]
 ActionType = Literal["buy", "sell", "rebalance"]
 UrgencyType = Literal["low", "medium", "high"]
-
-
-# 阈值键名（集中声明，便于统一管理与查找）
-# 采用小写蛇形命名，增强可读性
-threshold_key_rebalance_light_abs = "rebalance_light_absolute"
-threshold_key_rebalance_strong_rel = "rebalance_strong_relative"
-threshold_key_tactical_drawdown = "tactical_drawdown"
-threshold_key_tactical_profit = "tactical_profit"
 
 
 @dataclass(frozen=True)
@@ -115,11 +115,11 @@ class ThresholdsProvider:
         """获取结构化阈值对象（可选，便于策略层使用）"""
         raw = self.get_raw()
         return Thresholds(
-            rebalance_light_absolute=raw.get(threshold_key_rebalance_light_abs, 0.05),
-            rebalance_strong_relative=raw.get(threshold_key_rebalance_strong_rel, 0.20),
-            tactical_drawdown=raw.get(threshold_key_tactical_drawdown, 0.10),
-            tactical_profit=raw.get(threshold_key_tactical_profit, 0.15),
-            cooldown_days=raw.get("cooldown_days", {})
+            rebalance_light_absolute=raw.get(ThresholdKeys.rebalance_light_absolute, 0.05),
+            rebalance_strong_relative=raw.get(ThresholdKeys.rebalance_strong_relative, 0.20),
+            tactical_drawdown=raw.get(ThresholdKeys.tactical_drawdown, 0.10),
+            tactical_profit=raw.get(ThresholdKeys.tactical_profit, 0.15),
+            cooldown_days=raw.get(ThresholdKeys.cooldown_days, {})
         )
 
 
@@ -231,8 +231,8 @@ class RebalancePolicy:
         signals = []
         thresholds = self.thresholds_provider.get_raw()
         
-        light_threshold = Decimal(str(thresholds.get(threshold_key_rebalance_light_abs, 0.05)))
-        strong_threshold = Decimal(str(thresholds.get(threshold_key_rebalance_strong_rel, 0.20)))
+        light_threshold = Decimal(str(thresholds.get(ThresholdKeys.rebalance_light_absolute, 0.05)))
+        strong_threshold = Decimal(str(thresholds.get(ThresholdKeys.rebalance_strong_relative, 0.20)))
         
         for asset_class, target in target_weights.items():
             target_decimal = Decimal(str(target))
@@ -249,7 +249,7 @@ class RebalancePolicy:
             
             # 强制再平衡（优先级高）
             if rel_deviation >= strong_threshold:
-                if self.cooldown_policy.check(asset_class, "rebalance_strong"):
+                if self.cooldown_policy.check(asset_class, SignalTypeConst.rebalance_strong):
                     continue
                 
                 # 计算需要调整的金额
@@ -257,11 +257,10 @@ class RebalancePolicy:
                 current_value = total_value * actual
                 adjust_amount = target_value - current_value
                 
-                action = "buy" if adjust_amount > 0 else "sell"
+                action = ActionTypeConst.buy if adjust_amount > 0 else ActionTypeConst.sell
                 
-                from core.signals import Signal
                 signal = Signal(
-                    signal_type="rebalance_strong",
+                    signal_type=SignalTypeConst.rebalance_strong,
                     asset_class=asset_class,
                     action=action,
                     amount=abs(adjust_amount),
@@ -275,17 +274,17 @@ class RebalancePolicy:
             
             # 轻度再平衡
             if abs_deviation >= light_threshold:
-                if self.cooldown_policy.check(asset_class, "rebalance_light"):
+                if self.cooldown_policy.check(asset_class, SignalTypeConst.rebalance_light):
                     continue
                 
                 target_value = total_value * target_decimal
                 current_value = total_value * actual
                 adjust_amount = target_value - current_value
                 
-                action = "buy" if adjust_amount > 0 else "sell"
+                action = ActionTypeConst.buy if adjust_amount > 0 else ActionTypeConst.sell
                 
                 signal = Signal(
-                    signal_type="rebalance_light",
+                    signal_type=SignalTypeConst.rebalance_light,
                     asset_class=asset_class,
                     action=action,
                     amount=abs(adjust_amount),
@@ -341,8 +340,8 @@ class TacticalPolicy:
         """
         thresholds = self.thresholds_provider.get_raw()
         
-        dd_threshold = Decimal(str(thresholds.get(threshold_key_tactical_drawdown, 0.10)))
-        profit_threshold = Decimal(str(thresholds.get(threshold_key_tactical_profit, 0.15)))
+        dd_threshold = Decimal(str(thresholds.get(ThresholdKeys.tactical_drawdown, 0.10)))
+        profit_threshold = Decimal(str(thresholds.get(ThresholdKeys.tactical_profit, 0.15)))
         
         # 计算90日回撤
         peak_90d, drawdown_90d = self.metrics.calculate_90d_drawdown(nav_90d_series)
@@ -353,21 +352,20 @@ class TacticalPolicy:
         
         # 加仓信号：回撤 >= 10% 且不超重
         if drawdown_90d <= -dd_threshold and current_weight <= target_weight:
-            if self.cooldown_policy.check(asset_class, "tactical_add"):
+            if self.cooldown_policy.check(asset_class, SignalTypeConst.tactical_add):
                 return None
             
             # 建议加码金额（可配置）
             suggest_amount = Decimal("200")
             
             risk_note = ""
-            if fund_type == "QDII":
+            if fund_type == FundType.qdii:
                 risk_note = "QDII 隔夜风险：今晚若反向波动，成交价将偏离触发点"
             
-            from core.signals import Signal
             signal = Signal(
-                signal_type="tactical_add",
+                signal_type=SignalTypeConst.tactical_add,
                 asset_class=asset_class,
-                action="buy",
+                action=ActionTypeConst.buy,
                 amount=suggest_amount,
                 reason=f"近90日回撤 {float(drawdown_90d)*100:.2f}%（阈值 {float(dd_threshold)*100:.0f}%），且权重未超标，建议加码",
                 urgency="medium",
@@ -380,15 +378,15 @@ class TacticalPolicy:
         # 减仓信号：超额收益 > 15% 且超重
         # TODO: 需要基准收益数据，暂用 90日高点作为简化判断
         if drawdown_90d >= profit_threshold and current_weight >= target_weight:
-            if self.cooldown_policy.check(asset_class, "tactical_reduce"):
+            if self.cooldown_policy.check(asset_class, SignalTypeConst.tactical_reduce):
                 return None
             
             suggest_amount = Decimal("200")
             
             signal = Signal(
-                signal_type="tactical_reduce",
+                signal_type=SignalTypeConst.tactical_reduce,
                 asset_class=asset_class,
-                action="sell",
+                action=ActionTypeConst.sell,
                 amount=suggest_amount,
                 reason=f"相对90日高点超额 {float(drawdown_90d)*100:.2f}%（阈值 {float(profit_threshold)*100:.0f}%），且权重超标，建议减码",
                 urgency="low"
@@ -433,10 +431,10 @@ class PriorityPolicy:
         TODO: 改为 sort_and_annotate，保留所有信号并标注优先级
         """
         priority_map = {
-            "rebalance_strong": 3,
-            "rebalance_light": 2,
-            "tactical_add": 1,
-            "tactical_reduce": 1
+            SignalTypeConst.rebalance_strong: 3,
+            SignalTypeConst.rebalance_light: 2,
+            SignalTypeConst.tactical_add: 1,
+            SignalTypeConst.tactical_reduce: 1
         }
         
         # 按优先级排序
@@ -463,45 +461,7 @@ class PriorityPolicy:
 # ==================
 # Entities（领域实体）
 # ==================
-
-class Signal:
-    """信号对象"""
-    
-    def __init__(
-        self,
-        signal_type: str,
-        asset_class: str,
-        action: str,
-        amount: Optional[Decimal] = None,
-        reason: str = "",
-        urgency: str = "medium",
-        risk_note: str = ""
-    ):
-        self.signal_type = signal_type  # rebalance_light, rebalance_strong, tactical_add, tactical_reduce
-        self.asset_class = asset_class
-        self.action = action            # buy, sell, rebalance
-        self.amount = amount
-        self.reason = reason
-        self.urgency = urgency          # low, medium, high
-        self.risk_note = risk_note
-        self.triggered_at = datetime.now().date()
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        return {
-            "signal_type": self.signal_type,
-            "asset_class": self.asset_class,
-            "action": self.action,
-            "amount": float(self.amount) if self.amount else None,
-            "reason": self.reason,
-            "urgency": self.urgency,
-            "risk_note": self.risk_note,
-            "triggered_at": self.triggered_at.isoformat()
-        }
-    
-    def __repr__(self) -> str:
-        return (f"Signal({self.signal_type}, {self.asset_class}, "
-                f"{self.action}, ¥{self.amount}, {self.urgency})")
+# 注意：Signal 类已移至 domain/models.py，此处直接导入使用
 
 
 # ==================
@@ -518,6 +478,7 @@ class SignalEngine:
     
     def __init__(
         self,
+        metrics,
         config: Optional[ConfigLoader] = None,
         state_file: Optional[str] = None
     ):
@@ -531,9 +492,9 @@ class SignalEngine:
         self.state_repo = SignalStateRepository(Path(state_file))
         self.state = self.state_repo.load()
         
-        # 组装服务
+        # 组装服务（依赖注入）
         self.thresholds_provider = ThresholdsProvider(self.config)
-        self.metrics = get_metrics()
+        self.metrics = metrics
         
         # 组装策略
         self.cooldown_policy = CooldownPolicy(self.state)
@@ -603,32 +564,17 @@ class SignalEngine:
         
         # 如果已执行，设置冷却期
         if executed:
-            cooldown_days_config = self.config.get_thresholds().get("cooldown_days", {})
+            cooldown_days_config = self.config.get_thresholds().get(ThresholdKeys.cooldown_days, {})
             
-            if signal.signal_type == "rebalance_strong":
-                days = cooldown_days_config.get("strong", 90)
-            elif signal.signal_type == "rebalance_light":
-                days = cooldown_days_config.get("light", 60)
+            if signal.signal_type == SignalTypeConst.rebalance_strong:
+                days = cooldown_days_config.get(CooldownKeys.strong, 90)
+            elif signal.signal_type == SignalTypeConst.rebalance_light:
+                days = cooldown_days_config.get(CooldownKeys.light, 60)
             else:  # tactical
-                days = cooldown_days_config.get("tactical", 30)
+                days = cooldown_days_config.get(CooldownKeys.tactical, 30)
             
             self.set_cooldown(signal.asset_class, signal.signal_type, days)
         
         self._save_state()
         logger.info(f"记录信号: {signal}, 已执行={executed}")
-
-
-# 全局实例
-_signal_engine_instance: Optional[SignalEngine] = None
-
-
-def get_signal_engine(
-    config: Optional[ConfigLoader] = None,
-    state_file: Optional[str] = None
-) -> SignalEngine:
-    """获取信号引擎实例（单例模式）"""
-    global _signal_engine_instance
-    if _signal_engine_instance is None:
-        _signal_engine_instance = SignalEngine(config, state_file)
-    return _signal_engine_instance
 

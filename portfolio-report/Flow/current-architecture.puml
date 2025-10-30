@@ -3,17 +3,27 @@ skinparam backgroundColor white
 skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
 skinparam linetype ortho
 
-title Portfolio Report - 已实现架构 (v0.2)
+title Portfolio Report - 分层架构图 (v2.0 重构版 - 对齐 discord-bot)
 
-' 样式定义
+' 样式定义（与 discord-bot 保持一致）
+skinparam package {
+  BackgroundColor<<presentation>> #E1BEE7
+  BorderColor<<presentation>> #9C27B0
+  BackgroundColor<<business>> #FFE0B2
+  BorderColor<<business>> #FF9800
+  BackgroundColor<<infrastructure>> #C8E6C9
+  BorderColor<<infrastructure>> #4CAF50
+  BackgroundColor<<domain>> #B3E5FC
+  BorderColor<<domain>> #03A9F4
+  BackgroundColor<<config>> #FFCDD2
+  BorderColor<<config>> #F44336
+  BackgroundColor<<shared>> #B2DFDB
+  BorderColor<<shared>> #00897B
+  FontSize 12
+}
+
 skinparam component {
-  BackgroundColor<<core>> #C8E6C9
-  BorderColor<<core>> #4CAF50
-  BackgroundColor<<source>> #FFE0B2
-  BorderColor<<source>> #FF9800
-  BackgroundColor<<report>> #E1BEE7
-  BorderColor<<report>> #9C27B0
-  FontSize 14
+  FontSize 11
 }
 
 skinparam database {
@@ -27,85 +37,222 @@ skinparam cloud {
 }
 
 ' ============================================================
-' 核心模块
+' 主入口
 ' ============================================================
 
-[Portfolio\n持仓管理] as Portfolio <<core>>
-[Signals\n信号引擎] as Signals <<core>>
-[ReportBuilder\n报告生成] as ReportBuilder <<report>>
-[EastMoneyAPI\n数据源] as EastMoney <<source>>
+component "main.py\n【CLI 入口】" as Main #FFF3E0
+component "public_api.py\n【公共 API】" as PublicAPI #FFF3E0
 
 ' ============================================================
-' 数据与服务
+' 配置层
 ' ============================================================
+
+package "config\n【配置层】" <<config>> {
+  component "settings.py\n环境变量" as Settings
+  component "config.yaml\n业务配置" as ConfigYAML
+  component "constants.py\n常量定义" as Constants
+}
+
+' ============================================================
+' 共享层
+' ============================================================
+
+package "shared\n【共享层】" <<shared>> {
+  component "time.py\n时间工具" as TimeUtils
+  component "constants.py\n常量重导出" as SharedConstants
+}
+
+' ============================================================
+' 表现层
+' ============================================================
+
+package "presentation\n【表现层】" <<presentation>> {
+  component "report_text.py\n文本渲染器" as TextRenderer
+}
+
+' ============================================================
+' 业务层
+' ============================================================
+
+package "business\n【业务层】" <<business>> {
+  package "portfolio" {
+    component "PortfolioUseCases\n用例编排" as UseCases
+  }
+}
+
+' ============================================================
+' 领域层（Core + Domain）
+' ============================================================
+
+package "domain/core\n【领域层】" <<domain>> {
+  component "Portfolio\n持仓管理" as Portfolio
+  component "SignalEngine\n信号生成" as Signals
+  component "ReportBuilder\n报告构建" as ReportBuilder
+  component "ConfirmationPoller\n确认轮询" as ConfirmPoller
+  component "TradingCalendar\n交易日历" as Calendar
+  component "MetricsCalculator\n指标计算" as Metrics
+  component "ReportDTO\n数据模型" as Models
+}
+
+' ============================================================
+' 基础设施层
+' ============================================================
+
+package "infrastructure\n【基础设施层】" <<infrastructure>> {
+  package "repositories" {
+    component "TransactionRepository\n交易记录仓储" as TxRepo
+    component "HoldingsRepository\n持仓快照仓储" as HoldingsRepo
+  }
+  package "market_data" {
+    component "EastMoneyFundAPI\n行情数据" as EastMoney
+  }
+  package "notifications" {
+    component "DiscordWebhookClient\nDiscord 通知" as DiscordClient
+  }
+  package "config" {
+    component "ConfigLoader\nYAML 加载" as ConfigLoader
+  }
+}
+
+' ============================================================
+' 外部服务
+' ============================================================
+
+cloud "天天基金/东方财富" as FundAPI
+cloud "Discord\nWebhook" as Discord
+cloud "GitHub Actions\n(cron触发)" as GHActions
 
 database "transactions.csv" as TxDB
 database "holdings.json" as HoldingsDB  
 database "state.json" as StateDB
-
-cloud "天天基金/东方财富" as API
-cloud "Discord" as Discord
-cloud "GitHub Actions\n(cron触发)" as GHActions
+database "data/cache/*.json" as CacheDB
 
 ' ============================================================
-' 核心关系
+' 依赖关系（单向依赖）
 ' ============================================================
 
-Portfolio --> TxDB : 读取
-Portfolio --> EastMoney : 净值
-Portfolio --> HoldingsDB : 保存
+Main --> Settings : 加载
+Main --> TxRepo : 创建
+Main --> HoldingsRepo : 创建
+Main --> EastMoney : 创建
+Main --> ConfigLoader : 创建
+Main --> Calendar : 创建
+Main --> UseCases : 注入依赖
+Main --> DiscordClient : 推送
+PublicAPI --> UseCases : 门面
+
+' 业务层
+UseCases --> Portfolio : 编排
+UseCases --> Signals : 信号
+UseCases --> ReportBuilder : 报告
+UseCases --> ConfirmPoller : 确认
+
+' 领域层（core）
+Portfolio --> TxRepo : 读取交易
+Portfolio --> HoldingsRepo : 保存快照
+Portfolio --> EastMoney : 获取净值
+Portfolio --> ConfigLoader : 读取配置
 
 Signals --> Portfolio : 权重
 Signals --> StateDB : 冷却
+Signals --> Metrics : 计算
+Signals --> ConfigLoader : 阈值
 
-ReportBuilder --> Portfolio : 持仓
+ReportBuilder --> Portfolio : 数据
 ReportBuilder --> Signals : 信号
-ReportBuilder --> Discord : 推送
+ReportBuilder --> TextRenderer : 渲染
+ReportBuilder --> Models : DTO
 
-EastMoney --> API : 抓取
+ConfirmPoller --> TxDB : 更新
+ConfirmPoller --> EastMoney : 查询
+ConfirmPoller --> DiscordClient : 通知
+ConfirmPoller --> ConfigLoader : 配置
 
-GHActions --> Portfolio : 触发
-GHActions --> ReportBuilder : 生成
+' 基础设施层
+EastMoney --> FundAPI : API 调用
+EastMoney --> CacheDB : 缓存
+DiscordClient --> Discord : POST
+ConfigLoader --> ConfigYAML : 读取
+
+' 外部触发
+GHActions --> Main : 定时执行
 
 ' ============================================================
-' 流程
+' 流程说明
 ' ============================================================
 
 note as Flow
-  <b>核心流程</b>
-  ━━━━━━━━━━
-  1. 读取交易
-  2. 获取净值
-  3. 计算权重
-  4. 生成信号
-  5. 推送报告
+  <b>报告生成流程</b>
+  ━━━━━━━━━━━━━━
+  1. CLI/Actions → UseCases（调用）
+  2. UseCases → Portfolio（刷新持仓）
+  3. Portfolio → EastMoney（获取净值）
+  4. UseCases → Signals（生成信号）
+  5. Signals → Metrics（计算偏离）
+  6. UseCases → ReportBuilder（构建报告）
+  7. ReportBuilder → TextRenderer（渲染）
+  8. Main → DiscordClient（推送）
+  
+  <b>确认轮询流程</b>
+  ━━━━━━━━━━━━━━
+  1. Actions → ConfirmPoller（执行）
+  2. ConfirmPoller → TxDB（读取待确认）
+  3. ConfirmPoller → EastMoney（查净值）
+  4. ConfirmPoller → TxDB（回填份额）
+  5. ConfirmPoller → DiscordClient（通知）
 end note
 
-Flow -[hidden]- Portfolio
+Flow -[hidden]- Main
 
 ' ============================================================
 ' 图例
 ' ============================================================
 
 legend right
-  |= 核心模块 (8个) |
-  | Portfolio | 361行 ✅ |
-  | Signals | 427行 ✅ |
-  | ReportBuilder | 233行 ✅ |
-  | EastMoneyAPI | 376行 ✅ |
-  | TradingCalendar | 340行 ✅ |
-  | Metrics | 174行 ✅ |
-  | ConfirmPoller | 238行 ✅ |
-  | CLI | 165行 ✅ |
+  |= 架构特点 (v2.0) |
+  | 分层清晰 | 6 层分离 ✅ |
+  | 单向依赖 | presentation → business → domain/core → infrastructure → shared ✅ |
+  | 职责单一 | 每个模块只做一件事 ✅ |
+  | 与 discord-bot 对齐 | 统一架构风格 ✅ |
+  | 依赖注入 | main.py 手动组装 ✅ |
+  | 易测试 | 所有依赖可mock ✅ |
+  | 易扩展 | 新增功能只需扩展用例 ✅ |
+  | 易替换 | 基础设施可平滑替换 ✅ |
   
-  |= 特性 |
-  | 估/净并行 | ✅ |
-  | 信号引擎 | ✅ |
-  | 自动报告 | ✅ |
-  | 确认回填 | ✅ |
+  |= 核心模块 (重构后) |
+  | Portfolio | ~300行 ✅ (简化) |
+  | SignalEngine | 628行 ✅ |
+  | ReportBuilder | 291行 ✅ |
+  | TransactionRepository | ~240行 ✅ (新增) |
+  | HoldingsRepository | ~80行 ✅ (新增) |
+  | EastMoneyFundAPI | 398行 ✅ |
+  | TradingCalendar | 317行 ✅ |
+  | MetricsCalculator | 164行 ✅ |
+  | ConfirmationPoller | 289行 ✅ |
+  | PortfolioUseCases | ~280行 ✅ (重构) |
   
-  |= 待实现 |
-  | Discord Bot | 🚧 |
+  |= 用例接口 (3个) |
+  | generate_report | 生成报告 ✅ |
+  | poll_confirmations | 确认轮询 ✅ |
+  | generate_signal_alert | 信号提醒 ✅ |
+  
+  |= 重构改进 |
+  | 仓储分离 | infrastructure/repositories/ ✅ |
+  | 统一错误处理 | Result 类型 ✅ |
+  | 共享层完善 | types/utils/constants ✅ |
+  | 领域模型统一 | domain/models.py ✅ |
+  | 依赖注入清晰 | 构造函数注入 ✅ |
+  | 代码量减少 | core 层精简 30% ✅ |
+  
+  |= 代码统计 (v2.0) |
+  | 总目录数 | 16 个 |
+  | 配置层 | 3 个文件 |
+  | 共享层 | 4 个文件 (新增 types/utils) |
+  | 基础设施层 | 7 个文件 (新增 repositories) |
+  | 业务层 | 1 个文件 |
+  | 领域层 | 2 个文件 (domain/models + core/*) |
+  | 表现层 | 1 个文件 |
+  | 主入口 | 2 个文件 |
 endlegend
 
 @enduml
