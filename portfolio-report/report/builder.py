@@ -9,10 +9,10 @@ from typing import Dict, List, Optional, Any, Literal
 from decimal import Decimal
 
 from infrastructure.config.config_loader import ConfigLoader
-from core.portfolio import Portfolio
-from core.signals import SignalEngine, Signal
+from domain.services.portfolio import Portfolio
+from domain.services.signals import SignalEngine
+from domain.models import Signal, ReportDTO, ReportSection
 from config.constants import AssetClass, ReportType
-from domain.models import ReportDTO, ReportSection
 
 logger = logging.getLogger(__name__)
 

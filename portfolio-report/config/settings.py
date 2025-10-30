@@ -9,13 +9,25 @@ from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 
-# 加载 .env 文件
-load_dotenv()
+# 加载多层 .env 文件（根目录优先，随后 discord_bot 覆盖）
+def _load_env_chain():
+    base_dir = Path(__file__).parents[2]  # amplitude-discord-report/
+    candidates = [
+        base_dir / ".env",
+        base_dir / "discord_bot" / ".env",
+        base_dir / "discord-bot" / ".env",  # 兼容旧目录名
+    ]
+    for env_file in candidates:
+        if env_file.exists():
+            # 允许后加载的文件覆盖之前的值，保证更具体的环境优先生效
+            load_dotenv(dotenv_path=env_file, override=True)
+
+_load_env_chain()
 
 
 @dataclass
 class Settings:
-    """应用配置（不使用单例，支持测试注入）"""
+    """应用配置（统一 portfolio-report 与 discord-bot）"""
     
     # ==================== 运行时配置 ====================
     log_level: str = "INFO"
@@ -26,7 +38,21 @@ class Settings:
     config_path: Optional[Path] = None
     
     # ==================== Discord 配置 ====================
+    discord_token: Optional[str] = None
     discord_webhook_url: str = ""
+    allowed_user_ids: list[int] = None
+    
+    # ==================== GitHub 配置 ====================
+    github_token: str = ""
+    github_repo: str = ""
+    github_data_path: str = "portfolio-report/data"
+    
+    # ==================== LLM 配置 ====================
+    ark_api_key: Optional[str] = None
+    ark_model_id: Optional[str] = None
+    dashscope_api_key: Optional[str] = None
+    zhipu_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
     
     # ==================== HTTP 代理 ====================
     http_proxy: Optional[str] = None
@@ -50,7 +76,26 @@ class Settings:
         config_path = Path(config_path_str) if config_path_str else None
         
         # Discord
+        discord_token = os.getenv("DISCORD_TOKEN")
         discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
+        allowed_user_ids_str = os.getenv("ALLOWED_USER_IDS", "")
+        allowed_user_ids = [
+            int(uid.strip()) 
+            for uid in allowed_user_ids_str.split(",") 
+            if uid.strip()
+        ] if allowed_user_ids_str else []
+        
+        # GitHub
+        github_token = os.getenv("GITHUB_TOKEN", "")
+        github_repo = os.getenv("GITHUB_REPO", "")
+        github_data_path = os.getenv("GITHUB_DATA_PATH", "portfolio-report/data")
+        
+        # LLM
+        ark_api_key = os.getenv("ARK_API_KEY")
+        ark_model_id = os.getenv("ARK_MODEL_ID")
+        dashscope_api_key = os.getenv("DASHSCOPE_API_KEY")
+        zhipu_api_key = os.getenv("ZHIPU_API_KEY")
+        openai_api_key = os.getenv("OPENAI_API_KEY")
         
         # 代理
         http_proxy = os.getenv("HTTP_PROXY")
@@ -61,7 +106,17 @@ class Settings:
             timezone=timezone,
             data_dir=data_dir,
             config_path=config_path,
+            discord_token=discord_token,
             discord_webhook_url=discord_webhook_url,
+            allowed_user_ids=allowed_user_ids,
+            github_token=github_token,
+            github_repo=github_repo,
+            github_data_path=github_data_path,
+            ark_api_key=ark_api_key,
+            ark_model_id=ark_model_id,
+            dashscope_api_key=dashscope_api_key,
+            zhipu_api_key=zhipu_api_key,
+            openai_api_key=openai_api_key,
             http_proxy=http_proxy,
             https_proxy=https_proxy,
         )

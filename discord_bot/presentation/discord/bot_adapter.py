@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 
 from config.settings import Settings
-from presentation.message_router import MessageRouter
+from discord_bot.presentation.message_router import MessageRouter
 
 logger = logging.getLogger(__name__)
 

@@ -11,8 +11,9 @@ from typing import Optional, Dict, Any
 
 from github import Github, GithubException
 
-from shared.types import Result, Transaction, HoldingsSnapshot
-from shared.utils import generate_short_id
+from shared.types import Result, HoldingsSnapshot
+from domain.models import Transaction
+from shared.utils import generate_tx_id
 from config.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,60 @@ class GitHubRepository:
             
             logger.error(f"GitHub 写入失败: {e}")
             return Result.fail(error=str(e))
+    
+    # ==================== 公开接口：交易查询 ====================
+    
+    def load_all_transactions(self) -> Result[list[dict[str, str]]]:
+        """
+        加载所有交易记录
+        
+        Returns:
+            Result[List[Dict[str, str]]]
+        """
+        try:
+            file_path = f"{self.data_path}/transactions.csv"
+            content, _ = self._read_file(file_path)
+            
+            if not content:
+                logger.warning(f"交易文件不存在: {file_path}")
+                return Result.ok(data=[], message="交易文件不存在")
+            
+            import csv
+            from io import StringIO
+            
+            transactions = []
+            reader = csv.DictReader(StringIO(content))
+            for row in reader:
+                transactions.append(row)
+            
+            logger.info(f"从 GitHub 加载了 {len(transactions)} 条交易记录")
+            return Result.ok(data=transactions)
+        
+        except Exception as e:
+            logger.error(f"加载交易记录失败: {e}")
+            return Result.fail(error=str(e))
+    
+    def load_transactions_by_status(self, status: str) -> Result[list[dict[str, str]]]:
+        """
+        按状态加载交易记录
+        
+        Args:
+            status: 状态（pending/confirmed/skipped）
+        
+        Returns:
+            Result[List[Dict[str, str]]]
+        """
+        result = self.load_all_transactions()
+        if not result.success:
+            return result
+        
+        from config.constants import TransactionFields
+        transactions = [
+            tx for tx in result.data
+            if tx.get(TransactionFields.status) == status
+        ]
+        
+        return Result.ok(data=transactions)
     
     # ==================== 公开接口：交易操作 ====================
     
@@ -351,7 +406,63 @@ class GitHubRepository:
             logger.error(f"delete_transaction 失败: {e}")
             return Result.fail(error=str(e))
     
-    # ==================== 公开接口：查询操作 ====================
+    # ==================== 公开接口：持仓操作 ====================
+    
+    def load_holdings(self) -> Result[dict[str, Any]]:
+        """
+        加载持仓快照
+        
+        Returns:
+            Result[Dict[str, Any]]
+        """
+        try:
+            file_path = f"{self.data_path}/holdings.json"
+            content, _ = self._read_file(file_path)
+            
+            if not content:
+                logger.info(f"持仓文件不存在: {file_path}")
+                return Result.ok(data=None, message="持仓文件不存在")
+            
+            import json
+            snapshot = json.loads(content)
+            
+            logger.info(f"从 GitHub 加载持仓快照")
+            return Result.ok(data=snapshot)
+        
+        except Exception as e:
+            logger.error(f"加载持仓快照失败: {e}")
+            return Result.fail(error=str(e))
+    
+    def save_holdings(self, snapshot: dict[str, Any]) -> Result[None]:
+        """
+        保存持仓快照
+        
+        Args:
+            snapshot: 持仓快照数据
+        
+        Returns:
+            Result[None]
+        """
+        try:
+            import json
+            file_path = f"{self.data_path}/holdings.json"
+            content = json.dumps(snapshot, ensure_ascii=False, indent=2)
+            
+            # 读取现有文件的 SHA（如果存在）
+            _, sha = self._read_file(file_path)
+            
+            result = self._write_file(
+                file_path,
+                content,
+                "[auto] update holdings snapshot",
+                sha
+            )
+            
+            return Result.ok() if result.success else Result.fail(error=result.error)
+        
+        except Exception as e:
+            logger.error(f"保存持仓快照失败: {e}")
+            return Result.fail(error=str(e))
     
     def read_holdings(self) -> Result[HoldingsSnapshot]:
         """

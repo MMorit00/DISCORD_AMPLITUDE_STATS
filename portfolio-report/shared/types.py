@@ -60,3 +60,4 @@ class HoldingsSnapshot:
     last_update: str
     raw_data: Optional[Dict[str, Any]] = None
 
+

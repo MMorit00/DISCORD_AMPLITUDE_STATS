@@ -10,7 +10,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from domain.models import Position
-from infrastructure.repositories import TransactionRepository, HoldingsRepository
 from infrastructure.config.config_loader import ConfigLoader
 from config.constants import TransactionType, TransactionStatus, TransactionFields
 from shared import Result
@@ -251,8 +250,7 @@ class Portfolio:
     
     def __init__(
         self,
-        tx_repo: TransactionRepository,
-        holdings_repo: HoldingsRepository,
+        repository,  # GitHubRepository 或其他仓储实现
         fund_api,
         config: ConfigLoader
     ):
@@ -260,13 +258,11 @@ class Portfolio:
         初始化（依赖注入）
         
         Args:
-            tx_repo: 交易记录仓储
-            holdings_repo: 持仓快照仓储
+            repository: 统一仓储（提供 load_all_transactions/save_holdings/load_holdings）
             fund_api: 基金 API
             config: 配置加载器
         """
-        self.tx_repo = tx_repo
-        self.holdings_repo = holdings_repo
+        self.repository = repository
         self.fund_api = fund_api
         self.config = config
         
@@ -299,7 +295,7 @@ class Portfolio:
             logger.info("开始刷新持仓数据...")
             
             # 1. 加载交易记录
-            tx_result = self.tx_repo.load_all()
+            tx_result = self.repository.load_all_transactions()
             if not tx_result.success:
                 return Result.fail(error=tx_result.error)
             
@@ -354,7 +350,7 @@ class Portfolio:
                     for code, pos in self.positions.items()
                 }
             }
-            return self.holdings_repo.save(snapshot)
+            return self.repository.save_holdings(snapshot)
         
         except Exception as e:
             logger.error(f"保存持仓快照失败: {e}")

@@ -1,13 +1,13 @@
 """
 LLM 解析器
 职责：将用户自然语言解析为工具调用或文本回复
-依赖：infrastructure.LLMClient, shared.types
+依赖：discord_bot.infrastructure.LLMClient, discord_bot.shared.types
 """
 import logging
 from typing import List, Union
 
-from infrastructure.llm.clients import LLMClient
-from shared.types import ToolSpec, ToolCall, TextReply
+from discord_bot.infrastructure.llm.clients import LLMClient
+from discord_bot.shared.types import ToolSpec, ToolCall, TextReply
 
 logger = logging.getLogger(__name__)
 

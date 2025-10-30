@@ -17,12 +17,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config.settings import load_settings
-from infrastructure.repositories import TransactionRepository, HoldingsRepository
+from infrastructure.github.repository import GitHubRepository
 from infrastructure.market_data.eastmoney import EastMoneyFundAPI
 from infrastructure.config.config_loader import ConfigLoader
 from infrastructure.notifications.discord import DiscordWebhookClient
-from core.trading_calendar import TradingCalendar
-from business.portfolio.usecases import PortfolioUseCases
+from domain.services.trading_calendar import TradingCalendar
+from domain.services.metrics import MetricsCalculator
+from domain.services.signals import SignalEngine
+from application.portfolio_service import PortfolioService
 
 logger = logging.getLogger(__name__)
 
@@ -69,35 +71,40 @@ def main():
         # 配置
         config = ConfigLoader(settings.config_path)
         
-        # 数据目录
-        data_dir = Path(settings.data_dir)
-        
-        # 仓储层
-        tx_repo = TransactionRepository(data_dir / "transactions.csv")
-        holdings_repo = HoldingsRepository(data_dir / "holdings.json")
+        # GitHub 仓储
+        github_repo = GitHubRepository(settings)
         
         # 外部服务
         fund_api = EastMoneyFundAPI()
         calendar = TradingCalendar(config.get_timezone())
+        metrics = MetricsCalculator()
+        signal_engine = SignalEngine(metrics, config)
         
-        # ==================== 业务层 ====================
+        # Discord Webhook（可选）
+        webhook_client = None
+        if settings.discord_webhook_url:
+            webhook_client = DiscordWebhookClient(settings.discord_webhook_url)
         
-        logger.info("初始化业务层...")
+        # ==================== 应用层 ====================
         
-        usecases = PortfolioUseCases(
+        logger.info("初始化应用服务...")
+        
+        service = PortfolioService(
             settings=settings,
             config=config,
-            tx_repo=tx_repo,
-            holdings_repo=holdings_repo,
+            repository=github_repo,
             fund_api=fund_api,
-            calendar=calendar
+            calendar=calendar,
+            metrics=metrics,
+            signal_engine=signal_engine,
+            webhook_client=webhook_client
         )
         
         # ==================== 执行用例 ====================
         
         logger.info(f"开始生成 {args.freq} 报告...")
         
-        report = usecases.generate_report(args.freq, args.force)
+        report = service.generate_report(args.freq, args.force)
         
         # ==================== 发送报告 ====================
         

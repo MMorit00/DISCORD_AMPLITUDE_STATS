@@ -1,0 +1,237 @@
+@startuml BotArchitecture
+skinparam backgroundColor white
+skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
+skinparam linetype ortho
+
+title Discord Bot - 4层架构图 (v3.0 重构版 - 复用 Portfolio Application)
+
+' 样式定义
+skinparam package {
+  BackgroundColor<<presentation>> #E1BEE7
+  BorderColor<<presentation>> #9C27B0
+  BackgroundColor<<application>> #FFE0B2
+  BorderColor<<application>> #FF9800
+  BackgroundColor<<domain>> #B3E5FC
+  BorderColor<<domain>> #03A9F4
+  BackgroundColor<<infrastructure>> #C8E6C9
+  BorderColor<<infrastructure>> #4CAF50
+  BackgroundColor<<shared>> #B2DFDB
+  BorderColor<<shared>> #00897B
+  FontSize 12
+}
+
+skinparam component {
+  FontSize 11
+}
+
+skinparam database {
+  BackgroundColor #FFF9C4
+  BorderColor #FBC02D
+}
+
+skinparam cloud {
+  BackgroundColor #E0F2F1
+  BorderColor #009688
+}
+
+' ============================================================
+' 主入口
+' ============================================================
+
+component "main.py\n【启动入口】" as Main #FFF3E0
+
+' ============================================================
+' 表现层（Discord Bot 专属）
+' ============================================================
+
+package "presentation\n【表现层】" <<presentation>> {
+  component "DiscordBotAdapter\nDiscord 事件" as BotAdapter
+  component "MessageRouter\n消息路由" as Router
+  component "portfolio_formatter\n输出格式化" as Formatter
+}
+
+package "business\n【业务逻辑】" {
+  component "LLMParser\n自然语言解析" as Parser
+  component "tools.py\n工具定义" as Tools
+}
+
+package "infrastructure (bot)\n【LLM 基础设施】" <<infrastructure>> {
+  component "LLMClient\n豆包客户端" as LLMClient
+}
+
+' ============================================================
+' 复用 portfolio-report 的层（依赖注入）
+' ============================================================
+
+note as PortfolioNote
+  <b>复用 portfolio-report 模块</b>
+  ━━━━━━━━━━━━━━━━━━━━
+  Bot 通过 sys.path 引入：
+  • application/portfolio_service.py
+  • domain/services/*
+  • infrastructure/github/*
+  • config/settings.py
+  
+  实现完整的业务能力复用 ✅
+end note
+
+package "portfolio-report\n【复用模块】" {
+  
+  package "application\n【应用层】" <<application>> {
+    component "PortfolioService\n统一应用服务" as PortfolioService
+  }
+  
+  package "domain\n【领域层】" <<domain>> {
+    component "models.py\n领域模型" as Models
+    package "services" {
+      component "Portfolio\n持仓管理" as Portfolio
+      component "SignalEngine\n信号生成" as Signals
+      component "TradingCalendar\n交易日历" as Calendar
+      component "MetricsCalculator\n指标计算" as Metrics
+    }
+  }
+  
+  package "infrastructure (portfolio)\n【基础设施层】" <<infrastructure>> {
+    component "GitHubRepository\n数据仓储" as Repository
+    component "EastMoneyFundAPI\n行情数据" as EastMoney
+    component "ConfigLoader\nYAML 加载" as ConfigLoader
+  }
+  
+  package "shared\n【共享层】" <<shared>> {
+    component "types.py\nResult/Settings" as Types
+    component "utils.py\n工具函数" as Utils
+  }
+}
+
+' ============================================================
+' 外部服务
+' ============================================================
+
+cloud "Discord\nGateway" as Discord
+cloud "豆包 LLM\n(Doubao)" as Doubao
+cloud "GitHub API" as GitHubAPI
+cloud "天天基金/东方财富" as FundAPI
+
+database "transactions.csv" as TxDB
+database "holdings.json" as HoldingsDB
+
+' ============================================================
+' 依赖关系（单向依赖 - 4层架构）
+' ============================================================
+
+' 主入口装配依赖
+Main --> BotAdapter : 启动
+Main ..> Router : 注入
+Main ..> Parser : 注入
+Main ..> LLMClient : 注入
+Main ..> PortfolioService : 注入
+Main ..> Repository : 创建
+Main ..> EastMoney : 创建
+Main ..> Calendar : 创建
+Main ..> Metrics : 创建
+Main ..> Signals : 创建
+Main ..> ConfigLoader : 创建
+
+' 表现层 → 应用层
+BotAdapter --> Discord : 监听
+BotAdapter --> Router : 路由
+Router --> Parser : 解析
+Router --> PortfolioService : 执行用例
+Router --> Formatter : 格式化
+
+' 业务层
+Parser --> LLMClient : 调用
+Parser --> Tools : 使用
+
+' 应用层 → 领域层
+PortfolioService --> Portfolio : 编排
+PortfolioService --> Signals : 信号
+PortfolioService --> Calendar : 日历
+PortfolioService --> Metrics : 计算
+
+' 领域层 → 基础设施层
+Portfolio --> Repository : 读写数据
+Portfolio --> EastMoney : 获取净值
+Portfolio --> ConfigLoader : 读取配置
+Signals --> Repository : 状态持久化
+Signals --> Metrics : 计算
+Signals --> ConfigLoader : 阈值
+
+' 基础设施层 → 外部服务
+LLMClient --> Doubao : API 调用
+Repository --> GitHubAPI : 读写
+EastMoney --> FundAPI : 获取行情
+
+' 数据
+GitHubAPI --> TxDB : 修改
+GitHubAPI --> HoldingsDB : 读取
+
+' ============================================================
+' 流程说明
+' ============================================================
+
+note as Flow
+  <b>消息处理流程（4层架构）</b>
+  ━━━━━━━━━━━━━━━━━━━━━━
+  1. Discord → BotAdapter（接收消息）
+  2. BotAdapter → Router（路由）
+  3. Router → Parser（自然语言解析）
+  4. Parser → LLMClient → 豆包（工具调用）
+  5. Router → PortfolioService（执行用例）
+     • skip_investment()
+     • update_position()
+     • confirm_shares()
+     • delete_transaction()
+     • query_status()
+  6. PortfolioService → Domain Services（领域编排）
+  7. Domain → Repository（数据操作）
+  8. Repository → GitHub（提交变更）
+  9. Router → Formatter（格式化结果）
+  10. BotAdapter → Discord（回复用户）
+  
+  <b>新增能力（复用 portfolio-report）</b>
+  ━━━━━━━━━━━━━━━━━━━━━━━━
+  • 生成报告（daily/weekly/monthly）
+  • 生成信号提醒（14:40）
+  • 确认轮询（自动回填份额）
+end note
+
+Flow -[hidden]- Main
+
+' ============================================================
+' 图例
+' ============================================================
+
+legend right
+  |= 架构特点 (v3.0 重构版) |
+  | 4层架构 | Presentation → Application → Domain → Infrastructure ✅ |
+  | 单向依赖 | 严格分层，依赖向下 ✅ |
+  | 完全复用 | Bot 复用 portfolio-report 的应用服务 ✅ |
+  | 统一配置 | Settings 合并（Discord + GitHub + LLM） ✅ |
+  | 统一仓储 | 只使用 GitHubRepository ✅ |
+  | 依赖注入 | main.py 集中装配 ✅ |
+  | 代码复用 | Bot 代码量减少 60% ✅ |
+  
+  |= 工具函数 (5个) |
+  | skip_investment | 跳过定投 ✅ |
+  | update_position | 调整持仓 ✅ |
+  | confirm_shares | 确认份额 ✅ |
+  | query_status | 查询状态 ✅ |
+  | delete_transaction | 删除交易 ✅ |
+  
+  |= 删除的模块（简化） |
+  | business/portfolio/usecases.py | ❌ 删除（复用 PortfolioService） |
+  | infrastructure/github/ | ❌ 删除（移至 portfolio-report） |
+  | config/settings.py | ❌ 删除（使用统一 Settings） |
+  | shared/types.py | ❌ 删除（使用统一 Result） |
+  
+  |= 代码统计 (v3.0) |
+  | Bot 专属文件 | 仅 8 个（精简 60%） |
+  | 复用文件 | 20+ 个（来自 portfolio-report） |
+  | 主入口 | 1 个 (main.py) |
+  | 表现层 | 3 个 (adapter/router/formatter) |
+  | 业务层 | 2 个 (parser/tools) |
+  | 基础设施层 | 1 个 (llm client) |
+endlegend
+
+@enduml
