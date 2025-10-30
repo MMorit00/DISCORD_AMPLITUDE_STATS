@@ -15,7 +15,7 @@ import argparse
 from portfolio_report.config.settings import load_settings
 from portfolio_report.infrastructure.github.repository import GitHubRepository
 from portfolio_report.infrastructure.market_data.eastmoney import EastMoneyFundAPI
-from portfolio_report.infrastructure.config.config_loader import ConfigLoader
+from portfolio_report.config.loader import ConfigLoader
 from portfolio_report.infrastructure.notifications.discord import DiscordWebhookClient
 from portfolio_report.domain.services.trading_calendar import TradingCalendar
 from portfolio_report.domain.services.metrics import MetricsCalculator

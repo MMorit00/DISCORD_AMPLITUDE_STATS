@@ -11,7 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from portfolio_report.domain.models import Signal
-from portfolio_report.infrastructure.config.config_loader import ConfigLoader
+from portfolio_report.config.loader import ConfigLoader
 from portfolio_report.config.constants import (
     SignalType as SignalTypeConst,
     ActionType as ActionTypeConst,

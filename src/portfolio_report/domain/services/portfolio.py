@@ -10,9 +10,9 @@ from decimal import Decimal
 from pathlib import Path
 
 from portfolio_report.domain.models import Position
-from portfolio_report.infrastructure.config.config_loader import ConfigLoader
+from portfolio_report.config.loader import ConfigLoader
 from portfolio_report.config.constants import TransactionType, TransactionStatus, TransactionFields
-from portfolio_report.shared import Result
+from portfolio_report.shared.types import Result
 
 logger = logging.getLogger(__name__)
 

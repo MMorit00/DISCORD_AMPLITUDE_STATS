@@ -8,7 +8,7 @@ from datetime import datetime, date
 from typing import Dict, List, Optional, Any, Literal
 from decimal import Decimal
 
-from portfolio_report.infrastructure.config.config_loader import ConfigLoader
+from portfolio_report.config.loader import ConfigLoader
 from portfolio_report.domain.services.portfolio import Portfolio
 from portfolio_report.domain.services.signals import SignalEngine
 from portfolio_report.domain.models import Signal, ReportDTO, ReportSection
@@ -266,7 +266,7 @@ class ReportBuilder:
     
     def _render_report(self, dto: ReportDTO) -> str:
         """渲染 ReportDTO 为文本（委托给渲染器）"""
-        from portfolio_report.presentation.formatters.report_text import render_report
+        from portfolio_report.presentation.report_text import render_report
         return render_report(dto)
 
 

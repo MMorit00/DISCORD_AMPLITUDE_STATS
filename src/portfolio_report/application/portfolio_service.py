@@ -8,7 +8,7 @@ from typing import Literal, Optional, List
 from datetime import datetime, date
 
 from portfolio_report.config.settings import Settings
-from portfolio_report.infrastructure.config.config_loader import ConfigLoader
+from portfolio_report.config.loader import ConfigLoader
 from portfolio_report.infrastructure.github.repository import GitHubRepository
 from portfolio_report.infrastructure.market_data.eastmoney import EastMoneyFundAPI
 from portfolio_report.infrastructure.notifications.discord import DiscordWebhookClient
@@ -18,9 +18,9 @@ from portfolio_report.domain.services.portfolio import Portfolio
 from portfolio_report.domain.services.signals import SignalEngine
 from portfolio_report.domain.services.confirm import ConfirmationPoller
 from portfolio_report.domain.models import Signal, ReportDTO
-from portfolio_report.report.builder import ReportBuilder
-from portfolio_report.presentation.formatters.report_text import render_report
-from portfolio_report.shared import Result
+from portfolio_report.application.report_builder import ReportBuilder
+from portfolio_report.presentation.report_text import render_report
+from portfolio_report.shared.types import Result
 from portfolio_report.shared.utils import parse_date, parse_datetime
 
 logger = logging.getLogger(__name__)

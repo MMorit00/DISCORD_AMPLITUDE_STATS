@@ -8,7 +8,7 @@ from datetime import datetime, date
 from typing import List, Dict, Optional, TypedDict, Callable
 from pathlib import Path
 
-from portfolio_report.infrastructure.config.config_loader import ConfigLoader
+from portfolio_report.config.loader import ConfigLoader
 from portfolio_report.infrastructure.notifications.discord import DiscordWebhookClient
 from portfolio_report.config.constants import TransactionStatus, NavKind, Defaults, TransactionFields
 
@@ -257,7 +257,7 @@ def main():
         )
         
         # 组装依赖
-        from portfolio_report.infrastructure.config.config_loader import ConfigLoader
+        from portfolio_report.config.loader import ConfigLoader
         from portfolio_report.infrastructure.market_data.eastmoney import EastMoneyFundAPI
         from portfolio_report.domain.services.trading_calendar import TradingCalendar
         
