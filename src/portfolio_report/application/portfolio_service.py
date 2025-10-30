@@ -17,9 +17,8 @@ from portfolio_report.domain.services.metrics import MetricsCalculator
 from portfolio_report.domain.services.portfolio import Portfolio
 from portfolio_report.domain.services.signals import SignalEngine
 from portfolio_report.domain.services.confirm import ConfirmationPoller
-from portfolio_report.domain.models import Signal, ReportDTO
+from portfolio_report.domain.models import Signal
 from portfolio_report.application.report_builder import ReportBuilder
-from portfolio_report.presentation.report_text import render_report
 from portfolio_report.shared.types import Result
 from portfolio_report.shared.utils import parse_date, parse_datetime
 
@@ -136,16 +135,13 @@ class PortfolioService:
             builder = ReportBuilder(self.portfolio, self.signal_engine, self.config)
             
             if freq == "daily":
-                dto = builder._build_daily_dto()
+                report_text = builder.build_daily_report()
             elif freq == "weekly":
-                dto = builder._build_weekly_dto()
+                report_text = builder.build_weekly_report()
             elif freq == "monthly":
-                dto = builder._build_monthly_dto(signals)
+                report_text = builder.build_monthly_report(signals)
             else:
-                dto = builder._build_monthly_dto(signals)
-            
-            # 渲染为文本
-            report_text = render_report(dto)
+                report_text = builder.build_monthly_report(signals)
             logger.info(f"{freq} 报告生成成功")
             
             return report_text
@@ -185,10 +181,7 @@ class PortfolioService:
             
             # 生成提醒
             builder = ReportBuilder(self.portfolio, self.signal_engine, self.config)
-            dto = builder._build_signal_alert_dto(signals, alert_time)
-            
-            # 渲染为文本
-            alert_text = render_report(dto)
+            alert_text = builder.build_signal_alert(signals, alert_time)
             logger.info(f"信号提醒生成成功（{len(signals)} 条）")
             
             return alert_text

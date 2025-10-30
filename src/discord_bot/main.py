@@ -10,7 +10,7 @@ import logging
 from portfolio_report.config.settings import load_settings
 from portfolio_report.infrastructure.github.repository import GitHubRepository
 from portfolio_report.infrastructure.market_data.eastmoney import EastMoneyFundAPI
-from portfolio_report.config.loader import ConfigLoader
+from portfolio_report.infrastructure.config.config_loader import ConfigLoader
 from portfolio_report.domain.services.trading_calendar import TradingCalendar
 from portfolio_report.domain.services.metrics import MetricsCalculator
 from portfolio_report.domain.services.signals import SignalEngine
@@ -20,7 +20,7 @@ from portfolio_report.application.portfolio_service import PortfolioService
 from discord_bot.infrastructure.llm.clients import LLMClient
 from discord_bot.business.llm.parser import LLMParser
 from discord_bot.presentation.message_router import MessageRouter
-from discord_bot.presentation.bot_adapter import DiscordBotAdapter
+from discord_bot.presentation.discord.bot_adapter import DiscordBotAdapter
 
 
 def setup_logging(log_level: str):
