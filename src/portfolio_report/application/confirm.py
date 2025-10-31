@@ -6,7 +6,7 @@ from datetime import datetime, date
 from typing import List, Dict, Optional
 
 from portfolio_report.config.loader import ConfigLoader
-from portfolio_report.config.constants import TransactionFields, Defaults
+from portfolio_report.shared.constants import TransactionFields, Defaults
 from portfolio_report.infrastructure.github.repository import GitHubRepository
 from portfolio_report.infrastructure.market_data.eastmoney import EastMoneyFundAPI
 from portfolio_report.infrastructure.notifications.discord import DiscordWebhookClient

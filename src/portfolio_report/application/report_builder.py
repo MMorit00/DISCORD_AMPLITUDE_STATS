@@ -5,14 +5,15 @@
 """
 import logging
 from datetime import datetime, date
-from typing import Dict, List, Optional, Any, Literal
+from typing import List, Optional
 from decimal import Decimal
 
 from portfolio_report.config.loader import ConfigLoader
-from portfolio_report.domain.services.portfolio import Portfolio
 from portfolio_report.application.signals_engine import SignalEngine
+from portfolio_report.domain.services.portfolio import Portfolio
 from portfolio_report.domain.models import Signal
-from portfolio_report.config.constants import AssetClass
+from portfolio_report.domain.constants import AssetClass
+
 
 logger = logging.getLogger(__name__)
 
@@ -165,5 +166,6 @@ def create_monthly_report(portfolio: Portfolio, signals: List[Signal]) -> str:
     """创建月报"""
     builder = ReportBuilder(portfolio)
     return builder.build_monthly_report(signals)
+
 
 

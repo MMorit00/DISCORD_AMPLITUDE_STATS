@@ -53,7 +53,7 @@ from typing import Optional, Tuple, TypedDict, Literal
 from dateutil import tz
 import chinese_calendar as cc
 
-from portfolio_report.config.constants import FundType
+from portfolio_report.domain.constants import FundType
 
 logger = logging.getLogger(__name__)
 

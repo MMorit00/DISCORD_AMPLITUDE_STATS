@@ -153,7 +153,7 @@ class GitHubRepository:
         if not result.success:
             return result
         
-        from config.constants import TransactionFields
+        from portfolio_report.shared.constants import TransactionFields
         transactions = [
             tx for tx in result.data
             if tx.get(TransactionFields.status) == status

@@ -5,14 +5,11 @@
 """
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from decimal import Decimal
-from pathlib import Path
 
 from portfolio_report.domain.models import Position
-from portfolio_report.config.loader import ConfigLoader
-from portfolio_report.config.constants import TransactionFields
-from portfolio_report.shared.types import Result
+from portfolio_report.shared.constants import TransactionFields
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +21,9 @@ logger = logging.getLogger(__name__)
 class PositionBuilder:
     """持仓构建服务：从交易记录构建持仓"""
 
-    def __init__(self, config: ConfigLoader):
-        self.config = config
+    def __init__(self, funds_config: Dict[str, List[str]], fund_types: Dict[str, str]):
+        self._funds_config = funds_config
+        self._fund_types = fund_types
 
     def build_positions(self, transactions: List[Dict[str, str]]) -> Dict[str, Position]:
         """
@@ -70,7 +68,7 @@ class PositionBuilder:
                 continue
             
             asset_class = self._get_asset_class(fund_code)
-            fund_type = self.config.get_fund_type(fund_code)
+            fund_type = self._fund_types.get(fund_code, "domestic")
             
             position = Position(
                 fund_code=fund_code,
@@ -85,8 +83,7 @@ class PositionBuilder:
 
     def _get_asset_class(self, fund_code: str) -> str:
         """获取基金的资产类别"""
-        funds_config = self.config.get('funds', {})
-        for asset_class, codes in funds_config.items():
+        for asset_class, codes in self._funds_config.items():
             if fund_code in codes:
                 return asset_class
         logger.warning(f"未找到基金 {fund_code} 的资产类别配置")
@@ -96,34 +93,7 @@ class PositionBuilder:
 class PriceUpdater:
     """价格更新服务：为持仓更新净值/估值"""
 
-    def update_positions_prices(
-        self,
-        positions: Dict[str, Position],
-        fund_api,
-        prefer_estimate: bool = False
-    ):
-        """
-        获取所有持仓的净值/估值数据
-        
-        Args:
-            positions: 持仓字典
-            fund_api: 基金 API
-            prefer_estimate: 是否优先使用估值
-        """
-        for fund_code, position in positions.items():
-            try:
-                data = fund_api.get_nav_or_estimate(fund_code, prefer_nav=not prefer_estimate)
-                if not data:
-                    logger.warning(f"未获取到 {fund_code} 的数据")
-                    continue
-
-                # 更新净值或估值
-                self._update_position_data(position, data)
-                
-            except Exception as e:
-                logger.error(f"获取 {fund_code} 数据失败: {e}")
-
-    def _update_position_data(self, position: Position, data: Dict):
+    def apply_price(self, position: Position, data: Dict) -> None:
         """更新持仓数据"""
         nav_kind = data.get('nav_kind')
         
@@ -204,8 +174,8 @@ class WeightCalculator:
 class DeviationCalculator:
     """偏离计算服务：计算权重偏离"""
 
-    def __init__(self, config: ConfigLoader):
-        self.config = config
+    def __init__(self, target_weights: Dict[str, float]):
+        self._target_weights = target_weights
 
     def calc_weight_deviation(self, weights_net: Dict[str, Decimal]) -> Dict[str, Tuple[Decimal, Decimal]]:
         """
@@ -217,10 +187,9 @@ class DeviationCalculator:
         Returns:
             Dict[asset_class, (abs_deviation, rel_deviation)]
         """
-        target_weights = self.config.get_target_weights()
         deviations = {}
 
-        for asset_class, target in target_weights.items():
+        for asset_class, target in self._target_weights.items():
             target_decimal = Decimal(str(target))
             actual_net = weights_net.get(asset_class, Decimal("0"))
 
@@ -243,34 +212,19 @@ class DeviationCalculator:
 # ==================
 
 class Portfolio:
-    """
-    投资组合聚合根
-    职责：编排领域服务，维护持仓状态
-    """
-    
+    """投资组合聚合根：纯领域状态与计算。"""
+
     def __init__(
         self,
-        repository,  # GitHubRepository 或其他仓储实现（不再在领域层使用）
-        fund_api,
-        config: ConfigLoader
+        *,
+        funds_config: Dict[str, List[str]],
+        fund_types: Dict[str, str],
+        target_weights: Dict[str, float],
     ):
-        """
-        初始化（依赖注入）
-        
-        Args:
-            repository: 统一仓储（提供 load_all_transactions/save_holdings/load_holdings）
-            fund_api: 基金 API
-            config: 配置加载器
-        """
-        self.repository = repository
-        self.fund_api = fund_api
-        self.config = config
-        
-        # 领域服务
-        self.position_builder = PositionBuilder(config)
+        self.position_builder = PositionBuilder(funds_config, fund_types)
         self.price_updater = PriceUpdater()
         self.weight_calculator = WeightCalculator()
-        self.deviation_calculator = DeviationCalculator(config)
+        self.deviation_calculator = DeviationCalculator(target_weights)
         
         # 持仓状态
         self.positions: Dict[str, Position] = {}
@@ -285,7 +239,7 @@ class Portfolio:
         """从交易记录构建并设置持仓（纯计算）"""
         self.positions = self.position_builder.build_positions(transactions)
 
-    def update_positions_prices_from_map(self, price_data_by_fund: Dict[str, Dict], prefer_estimate: bool = False) -> None:
+    def update_positions_prices_from_map(self, price_data_by_fund: Dict[str, Dict]) -> None:
         """使用外部提供的价格数据更新持仓（纯计算，不做 I/O）"""
         for fund_code, position in self.positions.items():
             data = price_data_by_fund.get(fund_code)
@@ -293,7 +247,7 @@ class Portfolio:
                 logger.warning(f"未提供 {fund_code} 的价格数据")
                 continue
             try:
-                self.price_updater._update_position_data(position, data)
+                self.price_updater.apply_price(position, data)
             except Exception as e:
                 logger.error(f"更新 {fund_code} 价格失败: {e}")
 

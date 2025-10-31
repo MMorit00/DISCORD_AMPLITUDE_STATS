@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 
 from portfolio_report.config.loader import ConfigLoader
-from portfolio_report.config.constants import ThresholdKeys, CooldownKeys
+from portfolio_report.shared.constants import ThresholdKeys, CooldownKeys
 from portfolio_report.domain.models import Signal
 from portfolio_report.domain.services.signals import (
     CooldownPolicy,

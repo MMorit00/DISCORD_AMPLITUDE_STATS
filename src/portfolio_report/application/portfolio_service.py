@@ -18,7 +18,7 @@ from portfolio_report.domain.services.portfolio import Portfolio
 from portfolio_report.application.signals_engine import SignalEngine
 from portfolio_report.application.confirm import ConfirmationPoller
 from portfolio_report.domain.models import Signal
-from portfolio_report.presentation.formatters.report_builder import ReportBuilder
+from portfolio_report.application.report_builder import ReportBuilder
 from portfolio_report.shared.types import Result
 from portfolio_report.shared.utils import parse_date, parse_datetime
 
@@ -70,9 +70,9 @@ class PortfolioService:
         """获取投资组合（延迟初始化）"""
         if self._portfolio is None:
             self._portfolio = Portfolio(
-                repository=self.repository,
-                fund_api=self.fund_api,
-                config=self.config
+                funds_config=self.config.get("funds", {}),
+                fund_types=self.config.get("fund_types", {}),
+                target_weights=self.config.get_target_weights(),
             )
 
             # 应用层编排：加载交易 -> 构建持仓 -> 拉行情 -> 计算权重 -> 保存快照
