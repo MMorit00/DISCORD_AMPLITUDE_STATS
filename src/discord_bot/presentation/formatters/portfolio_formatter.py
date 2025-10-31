@@ -4,7 +4,7 @@ Portfolio 输出格式化
 依赖：shared.types, shared.utils
 """
 from portfolio_report.shared.types import Result, HoldingsSnapshot
-from discord_bot.shared.utils import format_amount, format_percentage
+from portfolio_report.shared.utils import format_amount, format_percentage
 
 
 # ==================== 格式化函数 ====================

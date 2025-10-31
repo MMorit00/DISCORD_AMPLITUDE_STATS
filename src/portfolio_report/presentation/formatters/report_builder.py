@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from portfolio_report.config.loader import ConfigLoader
 from portfolio_report.domain.services.portfolio import Portfolio
-from portfolio_report.domain.services.signals import SignalEngine
+from portfolio_report.application.signals_engine import SignalEngine
 from portfolio_report.domain.models import Signal
 from portfolio_report.config.constants import AssetClass
 
@@ -146,9 +146,9 @@ class ReportBuilder:
         lines.append("━━━━━━━━━━━━━━━━━━━━")
         return "\n".join(lines)
     
-
-
-# 便捷函数
+    
+    
+    # 便捷函数
 def create_daily_report(portfolio: Portfolio) -> str:
     """创建日报"""
     builder = ReportBuilder(portfolio)
@@ -165,4 +165,5 @@ def create_monthly_report(portfolio: Portfolio, signals: List[Signal]) -> str:
     """创建月报"""
     builder = ReportBuilder(portfolio)
     return builder.build_monthly_report(signals)
+
 

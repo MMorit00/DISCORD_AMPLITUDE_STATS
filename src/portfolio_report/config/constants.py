@@ -31,26 +31,6 @@ class FundType:
         return [cls.domestic, cls.qdii]
 
 
-# ==================== 交易状态与类型 ====================
-
-class TransactionType:
-    """交易类型常量"""
-    buy = "buy"
-    sell = "sell"
-    skip = "skip"
-
-
-class TransactionStatus:
-    """交易状态常量"""
-    pending = "pending"
-    confirmed = "confirmed"
-    skipped = "skipped"
-
-
-class NavKind:
-    """净值类型常量"""
-    net = "净"
-    estimate = "估"
 
 
 # ==================== CSV Schema ====================
@@ -111,26 +91,7 @@ class CooldownKeys:
 
 # ==================== 信号类型与操作 ====================
 
-class SignalType:
-    """信号类型常量"""
-    rebalance_light = "rebalance_light"
-    rebalance_strong = "rebalance_strong"
-    tactical_add = "tactical_add"
-    tactical_reduce = "tactical_reduce"
-
-
-class ActionType:
-    """操作类型常量"""
-    buy = "buy"
-    sell = "sell"
-    rebalance = "rebalance"
-
-
-class UrgencyType:
-    """紧急程度常量"""
-    low = "low"
-    medium = "medium"
-    high = "high"
+# 信号/操作/紧急度常量统一使用领域模型中的类型或字面量字符串
 
 
 # ==================== 默认值 ====================

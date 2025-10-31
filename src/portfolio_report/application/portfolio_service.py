@@ -15,10 +15,10 @@ from portfolio_report.infrastructure.notifications.discord import DiscordWebhook
 from portfolio_report.domain.services.trading_calendar import TradingCalendar
 from portfolio_report.domain.services.metrics import MetricsCalculator
 from portfolio_report.domain.services.portfolio import Portfolio
-from portfolio_report.domain.services.signals import SignalEngine
-from portfolio_report.domain.services.confirm import ConfirmationPoller
+from portfolio_report.application.signals_engine import SignalEngine
+from portfolio_report.application.confirm import ConfirmationPoller
 from portfolio_report.domain.models import Signal
-from portfolio_report.application.report_builder import ReportBuilder
+from portfolio_report.presentation.formatters.report_builder import ReportBuilder
 from portfolio_report.shared.types import Result
 from portfolio_report.shared.utils import parse_date, parse_datetime
 
@@ -74,10 +74,42 @@ class PortfolioService:
                 fund_api=self.fund_api,
                 config=self.config
             )
-            # 立即刷新持仓
-            refresh_result = self._portfolio.refresh()
-            if not refresh_result.success:
-                logger.warning(f"刷新持仓失败: {refresh_result.error}")
+
+            # 应用层编排：加载交易 -> 构建持仓 -> 拉行情 -> 计算权重 -> 保存快照
+            try:
+                tx_result = self.repository.load_all_transactions()
+                if not tx_result.success:
+                    logger.warning(f"加载交易失败: {tx_result.error}")
+                else:
+                    # 1) 构建持仓
+                    self._portfolio.set_positions_from_transactions(tx_result.data)
+
+                    # 2) 拉取价格数据
+                    price_map = {}
+                    for fund_code in self._portfolio.positions.keys():
+                        try:
+                            data = self.fund_api.get_nav_or_estimate(fund_code, prefer_nav=True)
+                            if data:
+                                price_map[fund_code] = data
+                        except Exception as e:
+                            logger.warning(f"获取 {fund_code} 行情失败: {e}")
+
+                    # 3) 更新持仓价格
+                    self._portfolio.update_positions_prices_from_map(price_map)
+
+                    # 4) 计算权重
+                    self._portfolio.recalc_weights()
+
+                    # 5) 保存快照
+                    try:
+                        snapshot = self._portfolio.build_snapshot()
+                        save_result = self.repository.save_holdings(snapshot)
+                        if not save_result.success:
+                            logger.warning(f"保存持仓快照失败: {save_result.error}")
+                    except Exception as e:
+                        logger.warning(f"保存持仓快照异常: {e}")
+            except Exception as e:
+                logger.warning(f"初始化持仓失败: {e}")
         
         return self._portfolio
     
@@ -85,14 +117,12 @@ class PortfolioService:
     def poller(self) -> ConfirmationPoller:
         """获取确认轮询器（延迟初始化）"""
         if self._poller is None:
-            # 注意：ConfirmationPoller 当前使用文件路径，需要适配 GitHub
-            # 暂时保留原有逻辑
             self._poller = ConfirmationPoller(
+                repository=self.repository,
                 fund_api=self.fund_api,
                 calendar=self.calendar,
-                webhook_url=self.settings.discord_webhook_url if hasattr(self.settings, 'discord_webhook_url') else None,
+                webhook_url=self.settings.discord_webhook_url if hasattr(self.settings, 'discord_webhook_url') else "",
                 config=self.config,
-                data_dir=str(self.settings.data_dir) if hasattr(self.settings, 'data_dir') else "data"
             )
         return self._poller
     

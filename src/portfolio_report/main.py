@@ -19,7 +19,7 @@ from portfolio_report.config.loader import ConfigLoader
 from portfolio_report.infrastructure.notifications.discord import DiscordWebhookClient
 from portfolio_report.domain.services.trading_calendar import TradingCalendar
 from portfolio_report.domain.services.metrics import MetricsCalculator
-from portfolio_report.domain.services.signals import SignalEngine
+from portfolio_report.application.signals_engine import SignalEngine
 from portfolio_report.application.portfolio_service import PortfolioService
 
 logger = logging.getLogger(__name__)

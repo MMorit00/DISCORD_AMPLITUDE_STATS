@@ -11,7 +11,7 @@ from pathlib import Path
 
 from portfolio_report.domain.models import Position
 from portfolio_report.config.loader import ConfigLoader
-from portfolio_report.config.constants import TransactionType, TransactionStatus, TransactionFields
+from portfolio_report.config.constants import TransactionFields
 from portfolio_report.shared.types import Result
 
 logger = logging.getLogger(__name__)
@@ -42,22 +42,22 @@ class PositionBuilder:
         for tx in transactions:
             fund_code = tx.get(TransactionFields.fund_code)
             shares_str = tx.get(TransactionFields.shares, "0")
-            tx_type = tx.get(TransactionFields.type, TransactionType.buy)
-            status = tx.get(TransactionFields.status, TransactionStatus.confirmed)
+            tx_type = tx.get(TransactionFields.type, "buy")
+            status = tx.get(TransactionFields.status, "confirmed")
 
             # 只统计已确认的交易
-            if status != TransactionStatus.confirmed:
+            if status != "confirmed":
                 continue
 
             # 跳过标记为 skipped 的记录
-            if tx_type == TransactionType.skip:
+            if tx_type == "skip":
                 continue
 
             try:
                 shares = Decimal(str(shares_str))
-                if tx_type == TransactionType.buy:
+                if tx_type == "buy":
                     shares_by_fund[fund_code] = shares_by_fund.get(fund_code, Decimal("0")) + shares
-                elif tx_type == TransactionType.sell:
+                elif tx_type == "sell":
                     shares_by_fund[fund_code] = shares_by_fund.get(fund_code, Decimal("0")) - shares
             except (ValueError, TypeError) as e:
                 logger.warning(f"无效的份额数据: {fund_code}, {shares_str}, {e}")
@@ -250,7 +250,7 @@ class Portfolio:
     
     def __init__(
         self,
-        repository,  # GitHubRepository 或其他仓储实现
+        repository,  # GitHubRepository 或其他仓储实现（不再在领域层使用）
         fund_api,
         config: ConfigLoader
     ):
@@ -281,49 +281,26 @@ class Portfolio:
     
     # ==================== 公开 API ====================
     
-    def refresh(self, prefer_estimate: bool = False) -> Result[None]:
-        """
-        刷新持仓数据
-        
-        Args:
-            prefer_estimate: 是否优先使用估值
-            
-        Returns:
-            Result[None]
-        """
-        try:
-            logger.info("开始刷新持仓数据...")
-            
-            # 1. 加载交易记录
-            tx_result = self.repository.load_all_transactions()
-            if not tx_result.success:
-                return Result.fail(error=tx_result.error)
-            
-            # 2. 构建持仓
-            self.positions = self.position_builder.build_positions(tx_result.data)
-            
-            # 3. 获取净值/估值
-            self.price_updater.update_positions_prices(
-                self.positions,
-                self.fund_api,
-                prefer_estimate
-            )
-            
-            # 4. 计算权重
-            result = self.weight_calculator.calc_totals_and_weights(self.positions)
-            self.total_value_net, self.total_value_est, self.weights_net, self.weights_est = result
-            
-            # 5. 保存快照
-            save_result = self._save_holdings()
-            if not save_result.success:
-                logger.warning(f"保存持仓快照失败: {save_result.error}")
-            
-            logger.info("持仓数据刷新完成")
-            return Result.ok()
-        
-        except Exception as e:
-            logger.exception(f"刷新持仓数据失败: {e}")
-            return Result.fail(error=str(e))
+    def set_positions_from_transactions(self, transactions: List[Dict[str, str]]) -> None:
+        """从交易记录构建并设置持仓（纯计算）"""
+        self.positions = self.position_builder.build_positions(transactions)
+
+    def update_positions_prices_from_map(self, price_data_by_fund: Dict[str, Dict], prefer_estimate: bool = False) -> None:
+        """使用外部提供的价格数据更新持仓（纯计算，不做 I/O）"""
+        for fund_code, position in self.positions.items():
+            data = price_data_by_fund.get(fund_code)
+            if not data:
+                logger.warning(f"未提供 {fund_code} 的价格数据")
+                continue
+            try:
+                self.price_updater._update_position_data(position, data)
+            except Exception as e:
+                logger.error(f"更新 {fund_code} 价格失败: {e}")
+
+    def recalc_weights(self) -> None:
+        """重新计算总市值与权重（纯计算）"""
+        result = self.weight_calculator.calc_totals_and_weights(self.positions)
+        self.total_value_net, self.total_value_est, self.weights_net, self.weights_est = result
     
     def get_weight_deviation(self) -> Dict[str, Tuple[Decimal, Decimal]]:
         """
@@ -334,27 +311,22 @@ class Portfolio:
         """
         return self.deviation_calculator.calc_weight_deviation(self.weights_net)
     
-    # ==================== 私有方法 ====================
+    # ==================== 快照构建 ====================
     
-    def _save_holdings(self) -> Result[None]:
-        """保存持仓快照"""
-        try:
-            snapshot = {
-                "generated_at": datetime.now().isoformat(),
-                "total_value_net": float(self.total_value_net),
-                "total_value_est": float(self.total_value_est),
-                "weights_net": {k: float(v) for k, v in self.weights_net.items()},
-                "weights_est": {k: float(v) for k, v in self.weights_est.items()},
-                "positions": {
-                    code: self._position_to_dict(pos)
-                    for code, pos in self.positions.items()
-                }
+    def build_snapshot(self) -> Dict:
+        """构建持仓快照（纯计算，不执行持久化）"""
+        snapshot = {
+            "generated_at": datetime.now().isoformat(),
+            "total_value_net": float(self.total_value_net),
+            "total_value_est": float(self.total_value_est),
+            "weights_net": {k: float(v) for k, v in self.weights_net.items()},
+            "weights_est": {k: float(v) for k, v in self.weights_est.items()},
+            "positions": {
+                code: self._position_to_dict(pos)
+                for code, pos in self.positions.items()
             }
-            return self.repository.save_holdings(snapshot)
-        
-        except Exception as e:
-            logger.error(f"保存持仓快照失败: {e}")
-            return Result.fail(error=str(e))
+        }
+        return snapshot
     
     def _position_to_dict(self, position: Position) -> Dict:
         """将 Position 转换为字典"""
