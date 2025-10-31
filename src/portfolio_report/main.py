@@ -12,15 +12,7 @@ import sys
 import logging
 import argparse
 
-from portfolio_report.config.settings import load_settings
-from portfolio_report.infrastructure.github.repository import GitHubRepository
-from portfolio_report.infrastructure.market_data.eastmoney import EastMoneyFundAPI
-from portfolio_report.config.loader import ConfigLoader
-from portfolio_report.infrastructure.notifications.discord import DiscordWebhookClient
-from portfolio_report.domain.services.trading_calendar import TradingCalendar
-from portfolio_report.domain.services.metrics import MetricsCalculator
-from portfolio_report.application.signals_engine import SignalEngine
-from portfolio_report.application.portfolio_service import PortfolioService
+from portfolio_report.application.container import build_application
 
 logger = logging.getLogger(__name__)
 
@@ -51,50 +43,19 @@ def main():
     
     args = parser.parse_args()
     
+    context = None
+
     try:
-        # ==================== 加载配置 ====================
-        settings = load_settings()
+        # ==================== 加载应用 ====================
+        context = build_application()
+        settings = context.settings
         setup_logging(settings.log_level)
         
         logger.info("=" * 60)
         logger.info(f"Portfolio Report - {args.freq.upper()} 报告")
         logger.info("=" * 60)
         
-        # ==================== 依赖注入 ====================
-        
-        logger.info("初始化基础设施层...")
-        
-        # 配置
-        config = ConfigLoader(settings.config_path)
-        
-        # GitHub 仓储
-        github_repo = GitHubRepository(settings)
-        
-        # 外部服务
-        fund_api = EastMoneyFundAPI()
-        calendar = TradingCalendar(config.get_timezone())
-        metrics = MetricsCalculator()
-        signal_engine = SignalEngine(metrics, config)
-        
-        # Discord Webhook（可选）
-        webhook_client = None
-        if settings.discord_webhook_url:
-            webhook_client = DiscordWebhookClient(settings.discord_webhook_url)
-        
-        # ==================== 应用层 ====================
-        
-        logger.info("初始化应用服务...")
-        
-        service = PortfolioService(
-            settings=settings,
-            config=config,
-            repository=github_repo,
-            fund_api=fund_api,
-            calendar=calendar,
-            metrics=metrics,
-            signal_engine=signal_engine,
-            webhook_client=webhook_client
-        )
+        service = context.reporting_service
         
         # ==================== 执行用例 ====================
         
@@ -106,9 +67,7 @@ def main():
         
         if settings.discord_webhook_url:
             logger.info("发送到 Discord...")
-            discord_client = DiscordWebhookClient(settings.discord_webhook_url)
-            discord_client.send(report)
-            logger.info("✅ 报告发送成功")
+            service.send_report(report)
         else:
             logger.warning("未配置 DISCORD_WEBHOOK_URL，跳过发送")
             print("\n" + "=" * 60)
@@ -124,12 +83,11 @@ def main():
         logger.exception(error_msg)
         
         # 尝试发送错误通知
-        try:
-            settings = load_settings()
-            if settings.discord_webhook_url:
-                DiscordWebhookClient(settings.discord_webhook_url).send(error_msg)
-        except:
-            pass
+        if context and context.settings.discord_webhook_url:
+            try:
+                context.reporting_service.send_report(error_msg)
+            except Exception:
+                pass
         
         sys.exit(1)
 

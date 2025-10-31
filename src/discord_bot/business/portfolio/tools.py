@@ -1,5 +1,5 @@
 """
-LLM 工具定义（与 PortfolioService 的用例对应）
+LLM 工具定义（与 TransactionService 的用例对应）
 """
 from typing import List, Dict, Any
 from discord_bot.shared.types import ToolSpec

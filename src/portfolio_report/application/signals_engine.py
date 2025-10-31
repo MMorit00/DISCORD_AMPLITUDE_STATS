@@ -16,7 +16,7 @@ from portfolio_report.domain.services.signals import (
     TacticalPolicy,
     PriorityPolicy,
 )
-from portfolio_report.infrastructure.state.signal_state import SignalStateRepository
+from portfolio_report.infrastructure.state.signal_state_repository import SignalStateRepository
 
 
 logger = logging.getLogger(__name__)

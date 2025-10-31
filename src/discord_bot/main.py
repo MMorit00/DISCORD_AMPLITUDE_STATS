@@ -6,21 +6,13 @@
 import sys
 import logging
 
-# ==================== 导入 portfolio_report 模块 ====================
-from portfolio_report.config.settings import load_settings
-from portfolio_report.infrastructure.github.repository import GitHubRepository
-from portfolio_report.infrastructure.market_data.eastmoney import EastMoneyFundAPI
-from portfolio_report.infrastructure.config.config_loader import ConfigLoader
-from portfolio_report.domain.services.trading_calendar import TradingCalendar
-from portfolio_report.domain.services.metrics import MetricsCalculator
-from portfolio_report.domain.services.signals import SignalEngine
-from portfolio_report.application.portfolio_service import PortfolioService
+from portfolio_report.application.container import build_application
 
 # ==================== 导入 discord_bot 模块 ====================
 from discord_bot.infrastructure.llm.clients import LLMClient
 from discord_bot.business.llm.parser import LLMParser
 from discord_bot.presentation.message_router import MessageRouter
-from discord_bot.presentation.discord.bot_adapter import DiscordBotAdapter
+from discord_bot.presentation.bot_adapter import DiscordBotAdapter
 
 
 def setup_logging(log_level: str):
@@ -34,8 +26,9 @@ def setup_logging(log_level: str):
 def main():
     """主函数：组装依赖并启动"""
     try:
-        # 加载配置（使用统一的 Settings）
-        settings = load_settings()
+        # 复用 portfolio_report 的装配工厂
+        context = build_application()
+        settings = context.settings
         setup_logging(settings.log_level)
         
         logger = logging.getLogger(__name__)
@@ -45,38 +38,10 @@ def main():
         
         # ==================== 依赖注入 ====================
         
-        logger.info("初始化基础设施层...")
-        
-        # 配置
-        config = ConfigLoader(settings.config_path)
-        
-        # GitHub 仓储
-        github_repo = GitHubRepository(settings)
-        
-        # 外部服务
-        fund_api = EastMoneyFundAPI()
-        calendar = TradingCalendar(config.get_timezone())
-        metrics = MetricsCalculator()
-        signal_engine = SignalEngine(metrics, config)
-        
         # LLM 客户端
         llm_client = LLMClient(settings)
         
-        # ==================== 应用层 ====================
-        
-        logger.info("初始化应用服务...")
-        
-        # Portfolio 应用服务（复用 portfolio-report 的）
-        portfolio_service = PortfolioService(
-            settings=settings,
-            config=config,
-            repository=github_repo,
-            fund_api=fund_api,
-            calendar=calendar,
-            metrics=metrics,
-            signal_engine=signal_engine,
-            webhook_client=None  # Bot 不需要 Webhook
-        )
+        transaction_service = context.transaction_service
         
         # LLM 解析器
         llm_parser = LLMParser(llm_client)
@@ -85,8 +50,8 @@ def main():
         
         logger.info("初始化表现层...")
         
-        # 消息路由器（使用 PortfolioService）
-        message_router = MessageRouter(llm_parser, portfolio_service)
+        # 消息路由器（使用 TransactionService）
+        message_router = MessageRouter(llm_parser, transaction_service)
         
         # Discord Bot 适配器
         discord_bot = DiscordBotAdapter(settings, message_router)

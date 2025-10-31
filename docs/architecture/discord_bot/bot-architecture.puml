@@ -67,7 +67,10 @@ note as PortfolioNote
   <b>复用 portfolio_report 模块</b>
   ━━━━━━━━━━━━━━━━━━━━
   通过标准包导入（src 布局），不再使用 sys.path 注入：
-  • portfolio_report.application.portfolio_service
+  • portfolio_report.application.container
+  • portfolio_report.application.services.transaction_service
+  • portfolio_report.application.services.reporting_service
+  • portfolio_report.application.services.confirmation_service
   • portfolio_report.domain.services.*
   • portfolio_report.infrastructure.github.*
   • portfolio_report.config.settings
@@ -78,7 +81,9 @@ end note
 package "portfolio_report\n【复用模块】" {
   
   package "application\n【应用层】" <<application>> {
-    component "PortfolioService\n统一应用服务" as PortfolioService
+    component "services/transaction_service.py\nTransactionService" as TransactionService
+    component "services/reporting_service.py\nReportingService" as ReportingService
+    component "services/confirmation_service.py\nConfirmationService" as ConfirmationService
   }
   
   package "domain\n【领域层】" <<domain>> {
@@ -124,19 +129,15 @@ Main --> BotAdapter : 启动
 Main ..> Router : 注入
 Main ..> Parser : 注入
 Main ..> LLMClient : 注入
-Main ..> PortfolioService : 注入
-Main ..> Repository : 创建
-Main ..> EastMoney : 创建
-Main ..> Calendar : 创建
-Main ..> Metrics : 创建
-Main ..> Signals : 创建
-Main ..> ConfigLoader : 创建
+Main ..> TransactionService : 注入
+Main ..> ReportingService : 可选使用
+Main ..> ConfirmationService : 可选使用
 
 ' 表现层 → 应用层
 BotAdapter --> Discord : 监听
 BotAdapter --> Router : 路由
 Router --> Parser : 解析
-Router --> PortfolioService : 执行用例
+Router --> TransactionService : 执行用例
 Router --> Formatter : 格式化
 
 ' 业务层
@@ -144,10 +145,7 @@ Parser --> LLMClient : 调用
 Parser --> Tools : 使用
 
 ' 应用层 → 领域层
-PortfolioService --> Portfolio : 编排
-PortfolioService --> Signals : 信号
-PortfolioService --> Calendar : 日历
-PortfolioService --> Metrics : 计算
+TransactionService --> Repository : 交易操作
 
 ' 领域层 → 基础设施层
 Portfolio --> Repository : 读写数据
@@ -177,15 +175,14 @@ note as Flow
   2. BotAdapter → Router（路由）
   3. Router → Parser（自然语言解析）
   4. Parser → LLMClient → 豆包（工具调用）
-  5. Router → PortfolioService（执行用例）
+  5. Router → TransactionService（执行用例）
      • skip_investment()
      • update_position()
      • confirm_shares()
      • delete_transaction()
      • query_status()
-  6. PortfolioService → Domain Services（领域编排）
-  7. Domain → Repository（数据操作）
-  8. Repository → GitHub（提交变更）
+  6. TransactionService → Repository（读写交易）
+  7. Repository → GitHub（提交变更）
   9. Router → Formatter（格式化结果）
   10. BotAdapter → Discord（回复用户）
   
@@ -220,7 +217,7 @@ legend right
   | delete_transaction | 删除交易 ✅ |
   
   |= 删除/保留的模块 |
-  | business/portfolio/usecases.py | ❌ 删除（复用 PortfolioService） |
+  | business/portfolio/usecases.py | ❌ 删除（复用 TransactionService 等） |
   | infrastructure/github/ | ❌ 删除（移至 portfolio_report） |
   | config/settings.py | ❌ 删除（使用统一 Settings 于 portfolio_report） |
   | shared/types.py | ✅ 保留（Bot LLM 工具类型）；Result 复用 portfolio_report.shared |

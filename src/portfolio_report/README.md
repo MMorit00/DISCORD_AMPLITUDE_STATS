@@ -22,8 +22,14 @@ amplitude-discord-report/
 ├── src/
 │   ├── portfolio_report/
 │   │   ├── application/
-│   │   │   ├── portfolio_service.py
-│   │   │   └── report_builder.py
+│   │   │   ├── container.py
+│   │   │   ├── signal_engine.py
+│   │   │   ├── report_builder.py
+│   │   │   └── services/
+│   │   │       ├── base_service.py
+│   │   │       ├── reporting_service.py
+│   │   │       ├── confirmation_service.py
+│   │   │       └── transaction_service.py
 │   │   ├── config/
 │   │   │   ├── config.yaml
 │   │   │   ├── loader.py
@@ -31,15 +37,15 @@ amplitude-discord-report/
 │   │   ├── domain/
 │   │   │   ├── models.py
 │   │   │   └── services/
-│   │   │       ├── confirm.py
 │   │   │       ├── metrics.py
 │   │   │       ├── portfolio.py
 │   │   │       ├── signals.py
 │   │   │       └── trading_calendar.py
 │   │   ├── infrastructure/
-│   │   │   ├── github/repository.py
-│   │   │   ├── market_data/eastmoney.py
-│   │   │   └── notifications/discord.py
+│   │   │   ├── github/github_repository.py
+│   │   │   ├── market_data/eastmoney_client.py
+│   │   │   ├── notifications/discord_webhook_client.py
+│   │   │   └── state/signal_state_repository.py
 │   │   ├── presentation/
 │   │   │   └── report_text.py
 │   │   └── data/
@@ -95,27 +101,19 @@ uv run discord-bot
 
 ## 🧩 关键模块
 
-- 应用层：`application/portfolio_service.py`, `application/report_builder.py`
+- 应用层：`application/services/*.py`, `application/report_builder.py`, `application/container.py`
 - 领域层：`domain/models.py`, `domain/services/*`
-- 基础设施层：`infrastructure/*`（GitHub 仓储/市场数据/通知）
+- 基础设施层：`infrastructure/*`（GitHub 仓储/市场数据/通知/状态）
 - 表现层：`presentation/report_text.py`
 - 配置：`config/loader.py`, `config/settings.py`, `config/config.yaml`
 
 示例：刷新并查看持仓（Python 交互）
 ```python
-from portfolio_report.domain.services.portfolio import Portfolio
-from portfolio_report.config.loader import ConfigLoader
-from portfolio_report.infrastructure.github.repository import GitHubRepository
-from portfolio_report.infrastructure.market_data.eastmoney import EastMoneyFundAPI
+from portfolio_report.application.container import build_application
 
-# 依赖注入（示例）
-config = ConfigLoader()
-repo = GitHubRepository(settings=None)  # 生产中通过 portfolio_service 注入
-fund_api = EastMoneyFundAPI()
-
-portfolio = Portfolio(repository=repo, fund_api=fund_api, config=config)
-portfolio.refresh()
-print(portfolio.weights_net)
+context = build_application()
+report = context.reporting_service.generate_report("daily", force=True)
+print(report)
 ```
 
 ---

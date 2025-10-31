@@ -7,9 +7,9 @@ from typing import List, Dict, Optional
 
 from portfolio_report.config.loader import ConfigLoader
 from portfolio_report.shared.constants import TransactionFields, Defaults
-from portfolio_report.infrastructure.github.repository import GitHubRepository
-from portfolio_report.infrastructure.market_data.eastmoney import EastMoneyFundAPI
-from portfolio_report.infrastructure.notifications.discord import DiscordWebhookClient
+from portfolio_report.infrastructure.github.github_repository import GitHubRepository
+from portfolio_report.infrastructure.market_data.eastmoney_client import EastMoneyFundAPI
+from portfolio_report.infrastructure.notifications.discord_webhook_client import DiscordWebhookClient
 from portfolio_report.domain.services.trading_calendar import TradingCalendar
 
 

@@ -3,21 +3,20 @@ skinparam backgroundColor white
 skinparam defaultFontName "PingFang SC,Microsoft YaHei,SimHei,Arial Unicode MS"
 skinparam linetype ortho
 
-title Portfolio Report - 4层架构图 (v3.0 重构版 - Clean Architecture)
+title Portfolio Report - 4层分层架构 (v4.0 重构后)
 
-' 样式定义
 skinparam package {
-  BackgroundColor<<presentation>> #E1BEE7
-  BorderColor<<presentation>> #9C27B0
-  BackgroundColor<<application>> #FFE0B2
-  BorderColor<<application>> #FF9800
-  BackgroundColor<<domain>> #B3E5FC
-  BorderColor<<domain>> #03A9F4
-  BackgroundColor<<infrastructure>> #C8E6C9
-  BorderColor<<infrastructure>> #4CAF50
-  BackgroundColor<<shared>> #B2DFDB
-  BorderColor<<shared>> #00897B
   FontSize 12
+  BackgroundColor<<presentation>> #E1BEE7
+  BorderColor<<presentation>> #8E24AA
+  BackgroundColor<<application>> #FFE0B2
+  BorderColor<<application>> #EF6C00
+  BackgroundColor<<domain>> #BBDEFB
+  BorderColor<<domain>> #1E88E5
+  BackgroundColor<<infrastructure>> #C8E6C9
+  BorderColor<<infrastructure>> #388E3C
+  BackgroundColor<<shared>> #B2DFDB
+  BorderColor<<shared>> #00695C
 }
 
 skinparam component {
@@ -35,247 +34,170 @@ skinparam cloud {
 }
 
 ' ============================================================
-' 主入口
+' 图层划分
 ' ============================================================
 
-component "main.py\n【CLI 入口】" as Main #FFF3E0
-
-' ============================================================
-' 配置层
-' ============================================================
-
-package "config\n【配置层】" {
-  component "settings.py\n统一配置" as Settings
-  component "config.yaml\n业务配置" as ConfigYAML
-  component "constants.py\n常量定义" as Constants
+package "Presentation\n【接口层】" <<presentation>> {
+  component "main.py\nCLI 入口" as Main
 }
 
-' ============================================================
-' 共享层
-' ============================================================
-
-package "shared\n【共享层】" <<shared>> {
-  component "types.py\nResult/HoldingsSnapshot" as Types
-  component "utils.py\n工具函数" as Utils
-  component "time.py\n时间工具" as TimeUtils
+package "Application\n【应用编排层】" <<application>> {
+  component "container.py\nbuild_application" as AppContainer
+  component "services/reporting_service.py\nReportingService" as AppReportingService
+  component "services/transaction_service.py\nTransactionService" as AppTransactionService
+  component "services/confirmation_service.py\nConfirmationService" as AppConfirmationService
+  component "report_builder.py\nReportBuilder" as AppReportBuilder
+  component "signals_engine.py\nSignalEngine" as AppSignalEngine
+  component "confirm.py\nConfirmationPoller" as AppConfirmPoller
 }
 
-' ============================================================
-' 表现层
-' ============================================================
+package "Domain\n【领域层】" <<domain>> {
+  component "models.py\n领域模型" as DomainModels
+  component "constants.py\n领域常量" as DomainConstants
 
-package "presentation\n【表现层】" <<presentation>> {
-  component "report_text.py\n文本渲染器" as TextRenderer
-}
-
-package "report\n【报告构建】" {
-  component "ReportBuilder\n报告构建器" as ReportBuilder
-}
-
-' ============================================================
-' 应用层（新增）
-' ============================================================
-
-package "application\n【应用层】" <<application>> {
-  component "PortfolioService\n统一应用服务" as PortfolioService
-}
-
-' ============================================================
-' 领域层（Domain）
-' ============================================================
-
-package "domain\n【领域层】" <<domain>> {
-  component "models.py\n领域模型" as Models
-  
-  package "services\n【领域服务】" {
-    component "Portfolio\n持仓管理" as Portfolio
-    component "SignalEngine\n信号引擎" as Signals
-    component "MetricsCalculator\n指标计算" as Metrics
-    component "TradingCalendar\n交易日历" as Calendar
-    component "ConfirmationPoller\n确认轮询" as ConfirmPoller
+  package "services" {
+    component "portfolio.py\nPortfolio 聚合" as DomainPortfolio
+    component "signals.py\n信号策略" as DomainSignals
+    component "metrics.py\n指标计算" as DomainMetrics
+    component "trading_calendar.py\n交易日历" as DomainCalendar
   }
 }
 
-' ============================================================
-' 基础设施层
-' ============================================================
+package "Infrastructure\n【基础设施层】" <<infrastructure>> {
+  component "github/github_repository.py\nGitHubRepository" as InfraRepository
+  component "market_data/eastmoney_client.py\nEastMoneyFundAPI" as InfraEastMoney
+  component "notifications/discord_webhook_client.py\nDiscordWebhookClient" as InfraDiscord
+  component "state/signal_state_repository.py\nSignalStateRepository" as InfraSignalState
+  component "config/loader.py\nConfigLoader" as InfraConfigLoader
+}
 
-package "infrastructure\n【基础设施层】" <<infrastructure>> {
-  package "github" {
-    component "GitHubRepository\nGitHub 仓储" as Repository
-  }
-  package "market_data" {
-    component "EastMoneyFundAPI\n行情数据" as EastMoney
-  }
-  package "notifications" {
-    component "DiscordWebhookClient\nDiscord 通知" as DiscordClient
-  }
-  package "config" {
-    component "ConfigLoader\nYAML 加载" as ConfigLoader
-  }
+package "Config & Shared\n【共用支持层】" <<shared>> {
+  component "config/settings.py\nSettings" as ConfigSettings
+  component "shared/constants.py\n共享常量" as SharedConstants
+  component "shared/types.py\nResult 等" as SharedTypes
+  component "shared/utils.py\n工具函数" as SharedUtils
 }
 
 ' ============================================================
-' 外部服务
+' 外部资源
 ' ============================================================
 
-cloud "天天基金/东方财富" as FundAPI
-cloud "Discord\nWebhook" as Discord
-cloud "GitHub API" as GitHubAPI
-cloud "GitHub Actions\n(cron触发)" as GHActions
+cloud "GitHub API" as ExtGitHub
+cloud "天天基金/东方财富" as ExtFundAPI
+cloud "Discord Webhook" as ExtDiscord
+cloud "GitHub Actions\n定时触发" as ExtCron
 
-database "transactions.csv" as TxDB
-database "holdings.json" as HoldingsDB  
-database "state.json" as StateDB
-database "data/cache/*.json" as CacheDB
-
-' ============================================================
-' 依赖关系（单向依赖 - Clean Architecture）
-' ============================================================
-
-' 主入口装配依赖
-Main --> Settings : 加载
-Main --> Repository : 创建
-Main --> EastMoney : 创建
-Main --> ConfigLoader : 创建
-Main --> Calendar : 创建
-Main --> Metrics : 创建
-Main --> Signals : 创建
-Main --> PortfolioService : 注入依赖
-Main --> DiscordClient : 推送
-
-' 表现层 → 应用层
-TextRenderer ..> Models : 使用
-ReportBuilder --> Portfolio : 数据
-ReportBuilder --> Signals : 信号
-ReportBuilder --> TextRenderer : 渲染
-ReportBuilder --> Models : DTO
-
-' 应用层 → 领域层
-PortfolioService --> Portfolio : 编排
-PortfolioService --> Signals : 信号
-PortfolioService --> ReportBuilder : 报告
-PortfolioService --> ConfirmPoller : 确认
-PortfolioService --> Calendar : 日历
-
-' 领域层 → 基础设施层
-Portfolio --> Repository : 读写数据
-Portfolio --> EastMoney : 获取净值
-Portfolio --> ConfigLoader : 读取配置
-Portfolio --> Models : 使用
-
-Signals --> Repository : 状态持久化
-Signals --> StateDB : 冷却
-Signals --> Metrics : 计算
-Signals --> ConfigLoader : 阈值
-Signals --> Models : Signal
-
-ConfirmPoller --> Repository : 更新交易
-ConfirmPoller --> EastMoney : 查询净值
-ConfirmPoller --> DiscordClient : 通知
-ConfirmPoller --> ConfigLoader : 配置
-ConfirmPoller --> Calendar : 日历
-
-' 基础设施层 → 外部服务
-EastMoney --> FundAPI : API 调用
-EastMoney --> CacheDB : 缓存
-DiscordClient --> Discord : POST
-ConfigLoader --> ConfigYAML : 读取
-Repository --> GitHubAPI : 读写
-
-' 数据
-GitHubAPI --> TxDB : 修改
-GitHubAPI --> HoldingsDB : 读写
-
-' 外部触发
-GHActions --> Main : 定时执行
+database "transactions.csv" as DataTx
+database "holdings.json" as DataHoldings
+database "state.json" as DataState
+database "cache/*.json" as DataCache
+file "config.yaml" as FileConfig
 
 ' ============================================================
-' 流程说明
+' 依赖方向
 ' ============================================================
 
-note as Flow
-  <b>报告生成流程（4层架构）</b>
-  ━━━━━━━━━━━━━━━━━━━━
-  1. CLI/Actions → Main（入口）
-  2. Main → PortfolioService.generate_report()
-  3. PortfolioService → Portfolio.refresh()
-  4. Portfolio → Repository.load_all_transactions()
-  5. Portfolio → EastMoney.get_nav_or_estimate()
-  6. PortfolioService → SignalEngine.generate_signals()
-  7. PortfolioService → ReportBuilder.build_report()
-  8. ReportBuilder → TextRenderer.render()
-  9. Main → DiscordClient.send()
-  
-  <b>确认轮询流程</b>
-  ━━━━━━━━━━━━━━━━━━━
-  1. Actions → PortfolioService.poll_confirmations()
-  2. ConfirmPoller → Repository.load_transactions_by_status()
-  3. ConfirmPoller → EastMoney.get_latest_nav()
-  4. ConfirmPoller → Repository.confirm_shares()
-  5. ConfirmPoller → DiscordClient.send()
-  
-  <b>交易操作流程（Bot 调用）</b>
-  ━━━━━━━━━━━━━━━━━━━━━━━
-  1. Bot → PortfolioService.update_position()
-  2. PortfolioService → Repository.add_transaction()
-  3. Repository → GitHub API → transactions.csv
+ExtCron --> Main : 调度执行
+
+Main --> AppContainer : 构建上下文
+
+AppContainer --> InfraRepository : GitHub 仓储
+AppContainer --> InfraEastMoney : 行情服务
+AppContainer --> DomainCalendar : 交易日历实例
+AppContainer --> DomainMetrics : 指标计算器
+AppContainer --> AppSignalEngine
+AppContainer --> AppReportingService
+AppContainer --> AppTransactionService
+AppContainer --> AppConfirmationService
+AppContainer --> InfraDiscord
+
+AppReportingService --> DomainPortfolio : 纯计算
+AppReportingService --> AppSignalEngine : 生成信号
+AppReportingService --> AppReportBuilder : 生成文本
+AppReportingService --> InfraRepository : 读写交易/持仓
+AppReportingService --> InfraEastMoney : 获取净值
+AppReportingService --> InfraDiscord : 发送报告
+
+AppTransactionService --> InfraRepository : 交易操作
+
+AppConfirmationService --> AppConfirmPoller
+
+AppSignalEngine --> DomainSignals : 冷却/策略
+AppSignalEngine --> InfraSignalState : 状态持久化
+AppSignalEngine --> DomainMetrics : 指标计算
+
+AppConfirmPoller --> InfraRepository : 更新交易
+AppConfirmPoller --> InfraEastMoney : 查询净值
+AppConfirmPoller --> InfraDiscord : 通知
+AppConfirmPoller --> DomainCalendar : 推演日期
+
+DomainPortfolio --> DomainModels
+
+InfraRepository --> ExtGitHub
+InfraRepository --> DataTx
+InfraRepository --> DataHoldings
+
+InfraEastMoney --> ExtFundAPI
+InfraEastMoney --> DataCache
+
+InfraDiscord --> ExtDiscord
+
+InfraSignalState --> DataState
+
+' ============================================================
+' 核心流程说明
+' ============================================================
+
+note right of AppReportingService
+  <b>报告流程</b>
+  1. CLI 触发 `generate_report`
+  2. 拉取配置 (ConfigLoader)
+  3. GitHubRepository 读取交易
+  4. EastMoneyFundAPI 获取行情
+  5. Portfolio 聚合/计算权重
+  6. SignalEngine 依据策略生成信号
+  7. ReportBuilder 生成文本
+  8. DiscordWebhookClient 可选发送
+
+  <b>确认轮询</b>
+  - ConfirmationPoller 读取待确认交易
+  - EastMoney 校验净值
+  - GitHubRepository 更新 CSV
+  - Discord 通知结果
+
+  <b>层间约束</b>
+  - Presentation 仅依赖 Application
+  - Application 依赖 Domain/Infrastructure/Config+Shared
+  - Domain 仅依赖 Shared
+  - Infrastructure 可依赖 Shared & Config
 end note
-
-Flow -[hidden]- Main
 
 ' ============================================================
 ' 图例
 ' ============================================================
 
 legend right
-  |= 架构特点 (v3.0 Clean Architecture) |
-  | 4层架构 | Presentation → Application → Domain → Infrastructure ✅ |
-  | 单向依赖 | 依赖严格向下，零循环依赖 ✅ |
-  | domain 统一 | models.py + services/ ✅ |
-  | 唯一仓储 | 只使用 GitHubRepository ✅ |
-  | 依赖注入 | main.py 集中装配 ✅ |
-  | 与 discord-bot 对齐 | 架构完全一致 ✅ |
-  | 易复用 | Bot 直接复用 Application 层 ✅ |
-  | 易测试 | 所有依赖可 mock ✅ |
-  | 易扩展 | 新增功能只需扩展 PortfolioService ✅ |
-  
-  |= 应用服务接口 (8个) |
-  | generate_report | 生成报告 ✅ |
-  | generate_signal_alert | 信号提醒 ✅ |
-  | poll_confirmations | 确认轮询 ✅ |
-  | skip_investment | 跳过定投 ✅ |
-  | update_position | 调整持仓 ✅ |
-  | confirm_shares | 确认份额 ✅ |
-  | delete_transaction | 删除交易 ✅ |
-  | query_status | 查询状态 ✅ |
-  
-  |= 删除的模块（简化） |
-  | business/portfolio/usecases.py | ❌ 删除（改为 application/portfolio_service.py） |
-  | infrastructure/repositories/ | ❌ 删除（改为 infrastructure/github/） |
-  | public_api.py | ❌ 删除（直接用 PortfolioService） |
-  | core/ | ❌ 删除（移至 domain/services/） |
-  
-  |= 核心模块 (v3.0) |
-  | PortfolioService | 372行 ✅ (新增) |
-  | Portfolio | ~370行 ✅ (简化) |
-  | SignalEngine | 628行 ✅ |
-  | ReportBuilder | 291行 ✅ |
-  | GitHubRepository | ~465行 ✅ (新增) |
-  | EastMoneyFundAPI | 398行 ✅ |
-  | TradingCalendar | 317行 ✅ |
-  | MetricsCalculator | 164行 ✅ |
-  | ConfirmationPoller | 289行 ✅ |
-  
-  |= 代码统计 (v3.0) |
-  | domain/models.py | 1 个（统一领域模型） |
-  | domain/services/ | 5 个（领域服务） |
-  | application/ | 1 个（应用服务） |
-  | infrastructure/ | 4 包（GitHub/市场/通知/配置） |
-  | presentation/ | 1 个（渲染器） |
-  | config/ | 3 个（配置） |
-  | shared/ | 3 个（共享工具） |
-  | 主入口 | 1 个 (main.py) |
+  |= 4 层分层约束 |
+  | Presentation | 主入口、渠道适配 |
+  | Application | 用例编排、依赖整合 |
+  | Domain | 纯业务逻辑、无 IO |
+  | Infrastructure | 外部系统适配 |
+
+  |= 关键组件 |
+  | build_application | 集中装配依赖 |
+  | ReportingService | 报告 & 信号提醒 |
+  | TransactionService | 交易与状态操作 |
+  | ConfirmationService | 份额确认轮询 |
+  | SignalEngine | 信号生成 orchestrator |
+  | Portfolio | 组合聚合根 (无外部依赖) |
+  | GitHubRepository | GitHub CSV 仓储 |
+  | EastMoneyFundAPI | 行情与估值适配器 |
+
+  |= 共享能力 |
+  | shared/constants | 阈值、字段、默认格式 |
+  | shared/types | 通用 Result/Holdings |
+  | config/settings | 环境配置入口 |
+  | config/loader | YAML 文件读取 |
 endlegend
 
 @enduml

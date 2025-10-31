@@ -6,6 +6,8 @@
 import logging
 from typing import Dict, Callable, Any
 
+from portfolio_report.application.services.transaction_service import TransactionService
+
 from discord_bot.business.llm.parser import LLMParser
 from discord_bot.business.portfolio.tools import all_tools as portfolio_tools
 from discord_bot.shared.types import ToolCall, TextReply
@@ -28,17 +30,17 @@ class MessageRouter:
     def __init__(
         self,
         llm_parser: LLMParser,
-        portfolio_service  # PortfolioService（从 portfolio-report/application）
+        transaction_service: TransactionService,
     ):
         """
         初始化
         
         Args:
             llm_parser: LLM 解析器
-            portfolio_service: Portfolio 应用服务（统一用例）
+            transaction_service: Portfolio Report 提供的交易服务
         """
         self.llm_parser = llm_parser
-        self.portfolio_service = portfolio_service
+        self.transaction_service = transaction_service
         
         # 注册工具名 → 用例方法的映射
         self.tool_handlers: Dict[str, Callable] = {
@@ -109,7 +111,7 @@ class MessageRouter:
     
     def _handle_skip_investment(self, args: Dict[str, Any]) -> str:
         """处理跳过定投"""
-        result = self.portfolio_service.skip_investment(
+        result = self.transaction_service.skip_investment(
             date_str=args["date"],
             fund_code=args["fund_code"]
         )
@@ -117,7 +119,7 @@ class MessageRouter:
     
     def _handle_update_position(self, args: Dict[str, Any]) -> str:
         """处理调整持仓"""
-        result = self.portfolio_service.update_position(
+        result = self.transaction_service.update_position(
             fund_code=args["fund_code"],
             amount=args["amount"],
             trade_time=args.get("trade_time")
@@ -126,7 +128,7 @@ class MessageRouter:
     
     def _handle_confirm_shares(self, args: Dict[str, Any]) -> str:
         """处理确认份额"""
-        result = self.portfolio_service.confirm_shares(
+        result = self.transaction_service.confirm_shares(
             fund_code=args["fund_code"],
             trade_date=args["trade_date"],
             shares=args["shares"]
@@ -135,11 +137,11 @@ class MessageRouter:
     
     def _handle_query_status(self, args: Dict[str, Any]) -> str:
         """处理查询持仓"""
-        result = self.portfolio_service.query_status()
+        result = self.transaction_service.query_status()
         return format_query_status(result)
     
     def _handle_delete_transaction(self, args: Dict[str, Any]) -> str:
         """处理删除交易"""
-        result = self.portfolio_service.delete_transaction(tx_id=args["tx_id"])
+        result = self.transaction_service.delete_transaction(tx_id=args["tx_id"])
         return format_delete_transaction(result, args["tx_id"])
 
